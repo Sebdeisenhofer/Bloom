@@ -1,0 +1,131 @@
+version: "3.1"
+
+session_config:
+  session_expiration_time: 1440
+  carry_over_slots_to_new_session: true
+
+slots:
+  user_id:
+    type: text
+    mappings:
+      - type: controlled
+  profile_exists:
+    type: bool
+    initial_value: false
+    mappings:
+      - type: controlled
+  hobbies:
+    type: text
+    mappings:
+      - type: from_llm
+  partner_activities:
+    type: text
+    mappings:
+      - type: from_llm
+  interests:
+    type: text
+    mappings:
+      - type: from_llm
+  preferred_times:
+    type: text
+    mappings:
+      - type: from_llm
+  preferred_group_size:
+    type: text
+    mappings:
+      - type: from_llm
+  travel_distance:
+    type: text
+    mappings:
+      - type: from_llm
+  event_title:
+    type: text
+    mappings:
+      - type: from_llm
+  event_date:
+    type: text
+    mappings:
+      - type: from_llm
+  event_time:
+    type: text
+    mappings:
+      - type: from_llm
+  event_location:
+    type: text
+    mappings:
+      - type: from_llm
+  event_host:
+    type: text
+    mappings:
+      - type: from_llm
+  event_description:
+    type: text
+    mappings:
+      - type: from_llm
+  event_confirmation:
+    type: text
+    mappings:
+      - type: from_llm
+  selected_event_id:
+    type: text
+    mappings:
+      - type: controlled
+  interest_text:
+    type: text
+    mappings:
+      - type: from_llm
+
+responses:
+  utter_welcome:
+    - text: "Hello, I’m Bloom, and I’m glad you’re here. I can help you find friendly local activities, or help you share an event."
+  utter_welcome_back:
+    - text: "Welcome back. What would you like to do today?"
+  utter_ask_hobbies:
+    - text: "What do you enjoy doing for fun?"
+  utter_ask_partner_activities:
+    - text: "Would you like activities you can enjoy with a partner or spouse?"
+  utter_ask_interests:
+    - text: "What kinds of community events sound interesting to you?"
+  utter_ask_preferred_times:
+    - text: "What time of day usually works best for you?"
+  utter_ask_preferred_group_size:
+    - text: "Do you prefer a small group or a larger group?"
+  utter_ask_travel_distance:
+    - text: "How far are you comfortable traveling for an activity?"
+  utter_ask_event_title:
+    - text: "What would you like to call your event?"
+  utter_ask_event_date:
+    - text: "What day will it take place?"
+  utter_ask_event_time:
+    - text: "What time will it start?"
+  utter_ask_event_location:
+    - text: "Where will people meet?"
+  utter_ask_event_host:
+    - text: "What name should I list as the host?"
+  utter_ask_event_description:
+    - text: "Please describe the event in a sentence or two."
+  utter_ask_event_confirmation:
+    - text: "Does everything look right? Say yes to post it, or no to cancel."
+  utter_ask_interest_text:
+    - text: "What would you like to try or find nearby?"
+  utter_help:
+    - text: "I can suggest Salem-area events, tell you about an event, save your RSVP, or help you post an event. You can also tell me about new interests."
+  utter_cancelled:
+    - text: "That’s okay. I’ve stopped that for now. What would you like to do instead?"
+  utter_goodbye:
+    - text: "Take care. I’m here whenever you’d like to find something to do."
+  utter_fallback:
+    - text: "I’m sorry, I didn’t quite get that. You can ask me to find events, tell you more, or help you post one."
+
+actions:
+  - action_load_profile
+  - action_save_profile
+  - action_save_event
+  - action_review_event
+  - action_search_events
+  - action_get_event_details
+  - action_save_rsvp
+  - action_update_interests
+  - action_cancel_flow
+  - action_repeat_last_message
+  - action_handle_free_text

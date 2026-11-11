@@ -1,0 +1,77 @@
+test_cases:
+  - test_case: New visitor completes onboarding
+    steps:
+      - user: Hello
+      - bot: What do you enjoy doing for fun?
+      - user: I like reading and gardening
+      - bot: Would you like activities you can enjoy with a partner or spouse?
+      - user: Yes, with my spouse
+      - bot: What kinds of community events sound interesting to you?
+      - user: Book clubs, gardens, and music
+      - bot: What time of day usually works best for you?
+      - user: Mornings
+      - bot: Do you prefer a small group or a larger group?
+      - user: Small groups
+      - bot: How far are you comfortable traveling for an activity?
+      - user: About ten miles
+      - bot: Thanks for sharing.
+
+  - test_case: Search events and view details
+    steps:
+      - user: Find Saturday morning events near Riverfront Park
+      - bot: I found 25 local events.
+      - user: Tell me more about event 5
+      - bot: Riverfront Park Walking Group
+      - user: Yes, I’d like to go to event 5
+      - bot: Your RSVP for Riverfront Park Walking Group is saved.
+
+  - test_case: Add a new interest and search
+    steps:
+      - user: I've gotten into birdwatching
+      - bot: I’ve added that to your interests.
+      - user: Find book clubs near me
+      - bot: I found 25 local events.
+
+  - test_case: Help and repeat
+    steps:
+      - user: What can you do?
+      - bot: I can help you find Salem-area events
+      - user: Repeat that
+      - bot: I can help you find Salem-area events
+
+  - test_case: Create and confirm an event
+    steps:
+      - user: I want to host an event
+      - bot: What would you like to call your event?
+      - user: Salem puzzle afternoon
+      - bot: What day will it take place?
+      - user: December 12
+      - bot: What time will it start?
+      - user: 2 PM
+      - bot: Where will people meet?
+      - user: Salem Public Library
+      - bot: What name should I list as the host?
+      - user: Jordan
+      - bot: Please describe the event in a sentence or two.
+      - user: Bring a puzzle and meet a new neighbor.
+      - bot: Does everything look right?
+      - user: Yes
+      - bot: Your event, Salem puzzle afternoon, is posted.
+
+  - test_case: Digression and return to event creation
+    steps:
+      - user: I want to host an event
+      - bot: What would you like to call your event?
+      - user: Garden chat
+      - bot: What day will it take place?
+      - user: What events are happening Saturday?
+      - bot: I found 25 local events.
+      - user: Continue my event
+      - bot: What day will it take place?
+
+  - test_case: Cancel event creation
+    steps:
+      - user: I want to host an event
+      - bot: What would you like to call your event?
+      - user: Cancel, go back
+      - bot: That’s okay. I’ve stopped that for now.

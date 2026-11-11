@@ -1,0 +1,131 @@
+flows:
+  pattern_session_start:
+    description: Welcome a new visitor or recognize a returning visitor.
+    name: pattern session start
+    steps:
+      - action: action_load_profile
+        next:
+          - if: slots.profile_exists
+            then: END
+          - else: onboarding_link
+      - id: onboarding_link
+        link: onboarding_survey
+
+  onboarding_survey:
+    description: Learn a visitor's activity preferences the first time they visit.
+    steps:
+      - collect: hobbies
+        description: Hobbies or things the visitor enjoys doing for fun.
+      - collect: partner_activities
+        description: Whether they want activities to do with a partner or spouse.
+      - collect: interests
+        description: Types of community events that interest the visitor.
+      - collect: preferred_times
+        description: Preferred time of day for activities.
+      - collect: preferred_group_size
+        description: Whether the visitor prefers small or large groups.
+      - collect: travel_distance
+        description: How far the visitor is willing to travel.
+      - action: action_save_profile
+      - action: utter_welcome_back
+
+  create_event:
+    description: Help a community member post an event, confirm it, then save it.
+    steps:
+      - collect: event_title
+        description: The event name or title.
+      - collect: event_date
+        description: The event date or day.
+      - collect: event_time
+        description: The start time of the event.
+      - collect: event_location
+        description: The address, venue, or meeting place.
+      - collect: event_host
+        description: The host's name.
+      - collect: event_description
+        description: A short description of the event.
+      - action: action_review_event
+      - collect: event_confirmation
+        description: Whether the user confirms posting the event.
+      - action: action_save_event
+      - set_slots:
+          - event_title: null
+          - event_date: null
+          - event_time: null
+          - event_location: null
+          - event_host: null
+          - event_description: null
+          - event_confirmation: null
+
+  search_events:
+    description: Find local events and rank every event against the visitor's interests; optional day, time, place, and category filters may guide ordering.
+    steps:
+      - action: action_search_events
+
+  event_details:
+    description: Give details about a selected event and offer to save an RSVP.
+    steps:
+      - action: action_get_event_details
+
+  update_interests:
+    description: Add a new interest from free text and immediately search events with it.
+    steps:
+      - collect: interest_text
+        description: A new interest or activity the visitor wants to find.
+      - action: action_update_interests
+
+  get_event_details:
+    description: Show where and when an event is and offer to attend.
+    steps:
+      - action: action_get_event_details
+
+  rsvp_event:
+    description: Save the visitor's RSVP for the selected event.
+    steps:
+      - action: action_save_rsvp
+
+  help:
+    description: Explain what the assistant can do.
+    steps:
+      - action: utter_help
+
+  cancel:
+    description: Stop the current task when the visitor asks to cancel or go back.
+    steps:
+      - action: action_cancel_flow
+
+  repeat_last_message:
+    description: Repeat the last assistant message when asked.
+    steps:
+      - action: action_repeat_last_message
+
+  pattern_chitchat:
+    description: Handle short greetings and ordinary conversation.
+    name: pattern chitchat
+    steps:
+      - action: action_handle_free_text
+
+  pattern_cannot_handle:
+    description: Respond warmly when a request is unclear.
+    name: pattern cannot handle
+    steps:
+      - action: utter_fallback
+
+  pattern_search:
+    description: Find events when the visitor asks a question about local activities.
+    name: pattern search
+    steps:
+      - action: action_search_events
+
+  pattern_clarification:
+    description: Answer a clarification request in plain language.
+    name: pattern clarification
+    steps:
+      - action: utter_help
+
+  pattern_completed:
+    description: Finish a completed task without an extra prompt.
+    name: pattern completed
+    steps:
+      - noop: true
+        next: END

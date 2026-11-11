@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2f5d50">
+  <title>Bloom</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='%23e88aa0'%3E%3Ccircle cx='20' cy='10' r='7'/%3E%3Ccircle cx='30' cy='18' r='7'/%3E%3Ccircle cx='26' cy='30' r='7'/%3E%3Ccircle cx='14' cy='30' r='7'/%3E%3Ccircle cx='10' cy='18' r='7'/%3E%3C/g%3E%3Ccircle cx='20' cy='21' r='5' fill='%23f4c95d'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="site-header">
+    <a class="brand" href="#" id="brand-link" aria-label="Bloom home">
+      <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
+        <g fill="#e88aa0">
+          <circle cx="20" cy="10" r="7"/><circle cx="30" cy="18" r="7"/><circle cx="26" cy="30" r="7"/>
+          <circle cx="14" cy="30" r="7"/><circle cx="10" cy="18" r="7"/>
+        </g>
+        <circle cx="20" cy="21" r="5" fill="#f4c95d"/>
+      </svg>
+      <span class="brand-name">Bloom</span>
+    </a>
+    <div class="header-controls" aria-label="Display settings">
+      <button id="large-text" class="pill" type="button" aria-pressed="false">A+ Larger text</button>
+      <button id="contrast" class="pill" type="button" aria-pressed="false">High contrast</button>
+      <button id="read-aloud" class="pill" type="button" aria-pressed="false">🔊 Read aloud: off</button>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- ============ SURVEY ============ -->
+    <section id="survey" class="survey" hidden>
+      <div class="survey-card">
+        <div class="progress" aria-hidden="true"><div id="progress-bar" class="progress-bar"></div></div>
+        <p id="step-count" class="step-count"></p>
+
+        <form id="survey-form" novalidate>
+          <!-- Step 1: welcome -->
+          <fieldset class="step" data-step="0">
+            <legend class="sr-only">Welcome</legend>
+            <h1 class="step-title">Welcome to Bloom 🌸</h1>
+            <p class="lead">We’d love to get to know you a little better. A few quick questions help us find events in the Salem area that fit <em>you</em>.</p>
+            <ul class="promise">
+              <li>It takes about 2 minutes.</li>
+              <li>You can skip any question.</li>
+              <li><strong>We never hide events.</strong> Your answers only change the order, so the best matches come first. You can still see everything.</li>
+            </ul>
+            <label class="field-label" for="name">What should we call you? <span class="optional">(optional)</span></label>
+            <input id="name" name="name" type="text" autocomplete="given-name" placeholder="Your first name">
+          </fieldset>
+
+          <!-- Step 2: interests -->
+          <fieldset class="step" data-step="1" hidden>
+            <legend class="step-title">What do you enjoy?</legend>
+            <p class="lead">Check as many as you like.</p>
+            <div class="check-grid" id="interest-options"></div>
+          </fieldset>
+
+          <!-- Step 3: community -->
+          <fieldset class="step" data-step="2" hidden>
+            <legend class="step-title">Your local community</legend>
+            <p class="field-label">Which part of Salem are you closest to?</p>
+            <div class="choice-row" id="area-options"></div>
+            <p class="field-label">How far are you comfortable going?</p>
+            <div class="choice-row" id="distance-options"></div>
+            <p class="field-label">How do you usually get around?</p>
+            <div class="choice-row" id="transport-options"></div>
+          </fieldset>
+
+          <!-- Step 4: schedule -->
+          <fieldset class="step" data-step="3" hidden>
+            <legend class="step-title">When are you usually free?</legend>
+            <p class="field-label">Days</p>
+            <div class="choice-row" id="day-options"></div>
+            <p class="field-label">Times of day</p>
+            <div class="choice-row" id="time-options"></div>
+          </fieldset>
+
+          <!-- Step 5: other -->
+          <fieldset class="step" data-step="4" hidden>
+            <legend class="step-title">A few last things</legend>
+            <p class="field-label">What kind of gathering feels best?</p>
+            <div class="choice-row" id="group-options"></div>
+            <p class="field-label">Is anything important for you at an event?</p>
+            <div class="choice-row" id="needs-options"></div>
+            <label class="field-label" for="notes">Anything else you’d like us to know? <span class="optional">(optional)</span></label>
+            <textarea id="notes" name="notes" rows="3" placeholder="For example: I just moved here and would like to meet neighbors."></textarea>
+          </fieldset>
+
+          <div class="survey-nav">
+            <button type="button" id="back-btn" class="btn btn-ghost" hidden>← Back</button>
+            <button type="button" id="skip-btn" class="btn btn-link">Skip for now</button>
+            <button type="submit" id="next-btn" class="btn btn-primary">Let’s begin →</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ LOADING ============ -->
+    <section id="matching" class="matching" hidden aria-live="polite">
+      <div class="bloom-spin" aria-hidden="true">🌸</div>
+      <p>Finding events that fit you…</p>
+    </section>
+
+    <!-- ============ HOME ============ -->
+    <section id="home" class="home" hidden>
+      <div class="hero">
+        <div>
+          <h1 id="greeting">Good morning</h1>
+          <p id="hero-sub" class="lead">Here’s what’s happening around Salem, picked with you in mind.</p>
+          <div id="interest-chips" class="chips" aria-label="Your interests"></div>
+        </div>
+        <div class="hero-actions">
+          <button type="button" id="edit-profile" class="btn btn-secondary">✏️ Update my interests</button>
+          <button type="button" id="open-create" class="btn btn-secondary">➕ Share an event</button>
+          <button type="button" id="open-chat" class="btn btn-primary">💬 Ask Bloom</button>
+        </div>
+      </div>
+
+      <div class="notice">
+        <strong>You’re in control.</strong> Events are sorted by how well they match your answers. Nothing is hidden. Scroll down to see every event.
+      </div>
+
+      <h2 class="section-title">Top picks for you</h2>
+      <div id="top-picks" class="top-picks"></div>
+
+      <div class="list-head">
+        <h2 class="section-title">All upcoming events <span id="event-count" class="count"></span></h2>
+        <div class="sort" role="group" aria-label="Sort events">
+          <span>Sort by:</span>
+          <button type="button" class="pill" data-sort="match" aria-pressed="true">Best match</button>
+          <button type="button" class="pill" data-sort="date" aria-pressed="false">Soonest</button>
+        </div>
+      </div>
+      <div id="event-list" class="event-list"></div>
+    </section>
+
+    <!-- ============ SHARE AN EVENT ============ -->
+    <section id="create" class="survey" hidden>
+      <div class="survey-card">
+        <div class="progress" aria-hidden="true"><div id="c-progress-bar" class="progress-bar"></div></div>
+        <p id="c-step-count" class="step-count"></p>
+
+        <form id="create-form" novalidate>
+          <!-- What -->
+          <fieldset class="c-step" data-step="0">
+            <legend class="step-title">What’s your event?</legend>
+            <p class="lead">Share something you’re hosting or know about. Neighbors on Bloom will be able to see it.</p>
+            <label class="field-label" for="ev-title">Event name</label>
+            <input id="ev-title" type="text" maxlength="90" placeholder="For example: Thursday Morning Coffee Chat">
+            <p class="field-label">What kind of event is it? <span class="optional">(pick any that fit, so the right people find it)</span></p>
+            <div class="check-grid" id="ev-tag-options"></div>
+            <label class="field-label" for="ev-desc">Tell people about it <span class="optional">(optional)</span></label>
+            <textarea id="ev-desc" rows="3" maxlength="800" placeholder="What will happen? Who is it for? Anything to bring?"></textarea>
+          </fieldset>
+
+          <!-- When -->
+          <fieldset class="c-step" data-step="1" hidden>
+            <legend class="step-title">When is it?</legend>
+            <p class="field-label">Date</p>
+            <div class="choice-row" id="ev-date-quick"></div>
+            <label class="field-label" for="ev-date">Or pick a date</label>
+            <input id="ev-date" type="date" class="date-input">
+            <label class="field-label" for="ev-time">Start time</label>
+            <select id="ev-time" class="select"></select>
+          </fieldset>
+
+          <!-- Where -->
+          <fieldset class="c-step" data-step="2" hidden>
+            <legend class="step-title">Where is it?</legend>
+            <label class="field-label" for="ev-place">Place name or address</label>
+            <input id="ev-place" type="text" maxlength="140" placeholder="For example: Salem Public Library, Room B">
+            <p class="field-label">Which part of Salem?</p>
+            <div class="choice-row" id="ev-area-options"></div>
+          </fieldset>
+
+          <!-- Details -->
+          <fieldset class="c-step" data-step="3" hidden>
+            <legend class="step-title">A few details</legend>
+            <p class="field-label">How big a group?</p>
+            <div class="choice-row" id="ev-group-options"></div>
+            <p class="field-label">Cost</p>
+            <div class="choice-row" id="ev-cost-options"></div>
+            <input id="ev-cost-other" type="text" maxlength="60" placeholder="For example: $5, or bring a dish" hidden aria-label="Describe the cost">
+            <p class="field-label">What does the place offer? <span class="optional">(helps people decide)</span></p>
+            <div class="choice-row" id="ev-needs-options"></div>
+            <label class="field-label" for="ev-host">Who is hosting? <span class="optional">(your name or group)</span></label>
+            <input id="ev-host" type="text" maxlength="80" placeholder="For example: Margaret, or the Knit & Chat group">
+          </fieldset>
+
+          <!-- Review -->
+          <fieldset class="c-step" data-step="4" hidden>
+            <legend class="step-title">Does this look right?</legend>
+            <p class="lead">Here’s how your event will appear to neighbors.</p>
+            <dl id="ev-review" class="review"></dl>
+          </fieldset>
+
+          <!-- Done -->
+          <div class="c-step done" data-step="5" hidden>
+            <div class="done-flower" aria-hidden="true">🌸</div>
+            <h2 class="step-title" tabindex="-1">Your event is posted!</h2>
+            <p class="lead">Thank you for bringing people together. Neighbors can now find it on Bloom.</p>
+          </div>
+
+          <p id="c-error" class="form-error" role="alert"></p>
+          <div class="survey-nav">
+            <button type="button" id="c-back" class="btn btn-ghost">← Back</button>
+            <button type="button" id="c-cancel" class="btn btn-link">Cancel</button>
+            <button type="submit" id="c-next" class="btn btn-primary">Next →</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ CHAT DRAWER ============ -->
+  <aside id="chat" class="chat" hidden aria-labelledby="chat-title">
+    <div class="chat-head">
+      <h2 id="chat-title">Ask Bloom</h2>
+      <button type="button" id="close-chat" class="btn btn-ghost" aria-label="Close chat">✕</button>
+    </div>
+    <div id="messages" class="messages" role="log" aria-live="polite"></div>
+    <div id="quick-replies" class="quick-replies"></div>
+    <form id="chat-form" class="chat-form">
+      <label for="message-input" class="sr-only">Your message</label>
+      <textarea id="message-input" rows="2" placeholder="Ask about events, or say what you’re in the mood for"></textarea>
+      <div class="chat-actions">
+        <button id="mic-button" class="btn btn-secondary" type="button">🎙 Speak</button>
+        <button id="send-button" class="btn btn-primary" type="submit">Send</button>
+      </div>
+      <p id="speech-status" class="help-text" role="status"></p>
+    </form>
+  </aside>
+
+  <footer class="site-footer">
+    <p>Bloom · Salem, Oregon. Events are community listings; please contact the host to confirm details and accessibility.</p>
+    <button type="button" id="reset" class="btn btn-link">Start over (clear my answers)</button>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
