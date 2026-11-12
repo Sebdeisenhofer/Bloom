@@ -1,77 +1,642 @@
 test_cases:
-  - test_case: New visitor completes onboarding
+  - test_case: New visitor completes onboarding and sees clear next steps
     steps:
       - user: Hello
-      - bot: What do you enjoy doing for fun?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_hobbies
       - user: I like reading and gardening
-      - bot: Would you like activities you can enjoy with a partner or spouse?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_partner_activities
       - user: Yes, with my spouse
-      - bot: What kinds of community events sound interesting to you?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_interests
       - user: Book clubs, gardens, and music
-      - bot: What time of day usually works best for you?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_preferred_times
       - user: Mornings
-      - bot: Do you prefer a small group or a larger group?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_preferred_group_size
       - user: Small groups
-      - bot: How far are you comfortable traveling for an activity?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_travel_distance
       - user: About ten miles
-      - bot: Thanks for sharing.
+        assertions:
+          - action_executed: action_save_profile
+          - bot_uttered:
+              utter_name: utter_welcome_back
+          - bot_uttered:
+              text_matches: "Find events this week.*Search by type.*Post your own event"
 
   - test_case: Search events and view details
     steps:
       - user: Find Saturday morning events near Riverfront Park
-      - bot: I found 25 local events.
-      - user: Tell me more about event 5
-      - bot: Riverfront Park Walking Group
-      - user: Yes, I’d like to go to event 5
-      - bot: Your RSVP for Riverfront Park Walking Group is saved.
+        assertions:
+          - action_executed: action_search_events
+          - bot_uttered:
+              text_matches: "^I found \\d+ local events"
 
   - test_case: Add a new interest and search
     steps:
       - user: I've gotten into birdwatching
-      - bot: I’ve added that to your interests.
-      - user: Find book clubs near me
-      - bot: I found 25 local events.
+        assertions:
+          - bot_uttered:
+              text_matches: "added that to your interests"
 
   - test_case: Help and repeat
     steps:
       - user: What can you do?
-      - bot: I can help you find Salem-area events
+        assertions:
+          - bot_uttered:
+              utter_name: utter_help
       - user: Repeat that
-      - bot: I can help you find Salem-area events
-
-  - test_case: Create and confirm an event
-    steps:
-      - user: I want to host an event
-      - bot: What would you like to call your event?
-      - user: Salem puzzle afternoon
-      - bot: What day will it take place?
-      - user: December 12
-      - bot: What time will it start?
-      - user: 2 PM
-      - bot: Where will people meet?
-      - user: Salem Public Library
-      - bot: What name should I list as the host?
-      - user: Jordan
-      - bot: Please describe the event in a sentence or two.
-      - user: Bring a puzzle and meet a new neighbor.
-      - bot: Does everything look right?
-      - user: Yes
-      - bot: Your event, Salem puzzle afternoon, is posted.
-
-  - test_case: Digression and return to event creation
-    steps:
-      - user: I want to host an event
-      - bot: What would you like to call your event?
-      - user: Garden chat
-      - bot: What day will it take place?
-      - user: What events are happening Saturday?
-      - bot: I found 25 local events.
-      - user: Continue my event
-      - bot: What day will it take place?
+        assertions:
+          - bot_uttered:
+              text_matches: "I can suggest Salem-area events"
 
   - test_case: Cancel event creation
     steps:
       - user: I want to host an event
-      - bot: What would you like to call your event?
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_title
       - user: Cancel, go back
-      - bot: That’s okay. I’ve stopped that for now.
+        assertions:
+          - flow_cancelled:
+              flow_id: create_event
+
+  - test_case: "Fix 2 - confirm with 'Yes' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Maple Tea
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "Yes"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Maple Tea, is posted"
+
+  - test_case: "Fix 2 - confirm with 'yeah' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Garden Walk
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yeah"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Garden Walk, is posted"
+
+  - test_case: "Fix 2 - confirm with 'sure' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Chess Club
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "sure"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Chess Club, is posted"
+
+  - test_case: "Fix 2 - confirm with 'yep' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Quilting Bee
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yep"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Quilting Bee, is posted"
+
+  - test_case: "Fix 2 - confirm with 'Yes, post it' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Poetry Circle
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "Yes, post it"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Poetry Circle, is posted"
+
+  - test_case: "Fix 2 - confirm with 'ok' posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Bird Walk
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "ok"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "yes"
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Bird Walk, is posted"
+
+  - test_case: "Fix 2 - answering 'no' does not post"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Bridge Club
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "no"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "no"
+          - bot_uttered:
+              utter_name: utter_event_not_posted
+
+  - test_case: "Fix 2 - answering 'nope' does not post"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Harmonica Hour
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "nope"
+        assertions:
+          - slot_was_set:
+              - name: event_confirmation
+                value: "no"
+          - bot_uttered:
+              utter_name: utter_event_not_posted
+
+  - test_case: "Fix 2 - the Yes button posts the event"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Coffee Chat
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Bring a puzzle and meet a new neighbor."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "/SetSlots(event_confirmation=yes)"
+        assertions:
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Coffee Chat, is posted"
+
+  - test_case: "Fix 3 - a posted event shows up in search"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Pinochle Party
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "Friendly pinochle games for all levels."
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yes"
+        assertions:
+          - bot_uttered:
+              text_matches: "is posted.*Bloom board"
+      - user: Find pinochle events
+        assertions:
+          - action_executed: action_search_events
+          - bot_uttered:
+              text_matches: "^I found \\d+ local events"
+
+  - test_case: "Fix 5 - description can be skipped with 'skip'"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Puzzle Swap
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "skip"
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yes"
+        assertions:
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Puzzle Swap, is posted"
+
+  - test_case: "Fix 5 - description can be skipped with 'none'"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Soup Supper
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "none"
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yes"
+        assertions:
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Soup Supper, is posted"
+
+  - test_case: "Fix 5 - description can be skipped with 'no'"
+    steps:
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+          - bot_uttered:
+              utter_name: utter_ask_event_title
+      - user: E2E Test Story Hour
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 12
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - slot_was_set:
+              - name: event_time
+                value: "2:00 PM"
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: "no"
+        assertions:
+          - action_executed: action_review_event
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yes"
+        assertions:
+          - action_executed: action_save_event
+          - bot_uttered:
+              text_matches: "Your event, E2E Test Story Hour, is posted"
+
+  - test_case: "Fix 5 - the description question says it is optional"
+    steps:
+      - user: I want to post an event
+      - user: E2E Test wording
+      - user: December 12
+      - user: 2 PM
+      - user: Salem Public Library
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              text_matches: "This is optional"

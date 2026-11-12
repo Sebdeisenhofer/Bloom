@@ -5,6 +5,7 @@ services:
       dockerfile: actions/Dockerfile
     environment:
       COMMUNITY_DB_PATH: /data/community.sqlite3
+      TZ: America/Los_Angeles  # "today" means today in Salem
     volumes:
       - community-data:/data
     healthcheck:
@@ -21,6 +22,10 @@ services:
     entrypoint: ["python", "-m", "actions.events_api"]
     environment:
       COMMUNITY_DB_PATH: /data/community.sqlite3
+      TZ: America/Los_Angeles  # "today" means today in Salem
+      # Optional real-event sources (Salem Public Library is always on).
+      TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
+      EXTRA_ICAL_FEEDS: ${EXTRA_ICAL_FEEDS:-}
     volumes:
       - community-data:/data
     healthcheck:
@@ -34,6 +39,7 @@ services:
       dockerfile: Dockerfile
     environment:
       RASA_PRO_LICENSE: ${RASA_PRO_LICENSE:?Set RASA_PRO_LICENSE in .env}
+      TZ: America/Los_Angeles
     depends_on:
       action-server:
         condition: service_healthy

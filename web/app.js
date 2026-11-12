@@ -21,6 +21,7 @@
     ["dancing", "💃", "Dancing"],
     ["health", "❤️", "Health & wellness talks"],
     ["movies", "🎬", "Movies & theater"],
+    ["sports", "🏀", "Watching sports & college games"],
     ["family", "👨‍👩‍👧", "Grandkids & family outings"],
     ["social", "☕", "Coffee & conversation"]
   ];
@@ -42,7 +43,8 @@
   const NEED_LABEL = Object.fromEntries(NEEDS);
 
   /* ------------------------------------------------------------------ *
-   * Sample events (fictional — for demo). `day` = days from today.
+   * Sample events (fictional). Only shown if real listings can't be loaded.
+   * `day` = days from today.
    * ------------------------------------------------------------------ */
   const EVENTS = [
     { id: 1, title: "Morning Garden Club: Planting Winter Bulbs", day: 1, time: "10:00 AM", tod: "morning", place: "Bush’s Pasture Park greenhouse", area: "south", tags: ["gardening", "walking", "social"], group: "small", cost: "Free", needs: ["accessible", "seating", "parking", "free"], host: "Bloom Garden Friends", desc: "Get your hands in the soil and plant tulip and daffodil bulbs for spring. Gloves, tools and hot cider provided. No experience needed." },
@@ -94,6 +96,8 @@
   let profile = load(KEY, null);
   let rsvps = new Set(load(RSVP_KEY, []));
   let sortMode = "match";
+  const PAGE = 20;
+  let shownCount = PAGE;
   let readAloud = false;
 
   /* ------------------------------------------------------------------ *
@@ -126,28 +130,98 @@
 
   /* Community events shared by neighbors (server-backed, visible to everyone) */
   let communityEvents = [];
+  let realListings = false;   // true once real (imported) events have loaded
+  let apiReachable = false;
+  let lastSignature = "";
   function fromApi(e) {
+    const community = e.source === "community";
     return {
-      id: "c" + e.id, apiId: e.id, community: true, mine: e.createdBy === senderId,
-      title: e.title, date: e.date, time: e.time, tod: timeOfDay(e.time), place: e.place, area: e.area,
+      id: "c" + e.id, apiId: e.id, community: community, source: e.source, url: e.url || "",
+      mine: community && e.createdBy === senderId,
+      title: e.title, date: e.date, time: e.time, endTime: e.endTime || "", tod: timeOfDay(e.time), place: e.place, area: e.area,
       tags: e.tags || [], group: e.group, cost: e.cost, needs: e.needs || [], host: e.host, desc: e.desc
     };
   }
+  // Returns true if the list changed since the last load.
   async function loadCommunityEvents() {
     try {
       const res = await fetch("/api/events", { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
-      communityEvents = ((await res.json()).events || []).map(fromApi);
-    } catch (e) { /* API offline: sample events still work */ }
+      const body = await res.json();
+      communityEvents = (body.events || []).map(fromApi);
+      realListings = !!body.real;
+      apiReachable = true;
+    } catch (e) { apiReachable = false; /* offline: sample events keep the app usable */ }
+    const sig = communityEvents.map(function (e) { return e.id + e.title + e.date + e.time; }).join("|") + realListings;
+    const changed = sig !== lastSignature;
+    lastSignature = sig;
+    return changed;
   }
-  function allEvents() { return EVENTS.concat(communityEvents); }
+  // Real listings replace the fictional samples; samples only appear as an offline fallback.
+  function allEvents() { return realListings ? communityEvents.slice() : EVENTS.concat(communityEvents); }
   function dayKey(d) { return d.toLocaleDateString("en-US", { weekday: "short" }); }
-  function speak(text) {
+  /* Read aloud. A card's Listen button turns into "Stop listening" while it talks. */
+  let speakingId = null;
+  let speakingBtn = null;
+  function setListenLabel(btn, on) {
+    if (!btn) return;
+    btn.textContent = on ? "⏹ Stop listening" : "🔊 Listen";
+    btn.setAttribute("aria-pressed", String(on));
+    btn.classList.toggle("is-speaking", on);
+  }
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setListenLabel(speakingBtn, false);
+    speakingBtn = null;
+    speakingId = null;
+  }
+  function speak(text, btn, id) {
     if (!("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
+    stopSpeaking();
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.92;
+    if (btn) {
+      speakingBtn = btn;
+      speakingId = id;
+      setListenLabel(btn, true);
+      u.onend = u.onerror = function () {
+        if (speakingId === id) { setListenLabel(speakingBtn, false); speakingBtn = null; speakingId = null; }
+      };
+    }
     window.speechSynthesis.speak(u);
+  }
+
+  /* Start and end times. Uses the listing's end time; otherwise an estimate. */
+  function parseClock(t) {
+    const m = /^(\d+):(\d+) (AM|PM)$/.exec(t || "");
+    return m ? (Number(m[1]) % 12 + (m[3] === "PM" ? 12 : 0)) * 60 + Number(m[2]) : null;
+  }
+  function formatClock(mins) {
+    mins = Math.min(mins, 23 * 60 + 59);
+    const h = Math.floor(mins / 60), mm = mins % 60;
+    return ((h + 11) % 12 + 1) + ":" + String(mm).padStart(2, "0") + " " + (h < 12 ? "AM" : "PM");
+  }
+  function endInfo(ev) {
+    if (ev.endTime) return { time: ev.endTime.replace(/^~/, ""), estimated: ev.endTime.charAt(0) === "~" };
+    const start = parseClock(ev.time);
+    if (start == null) return null;
+    const minutes = (ev.tags || []).indexOf("sports") >= 0 ? 150 : 90;
+    return { time: formatClock(start + minutes), estimated: true };
+  }
+  function sourceNames() {
+    const names = { library: "Salem Public Library", willamette: "Willamette University athletics",
+      heritage: "Willamette Heritage Center", ticketmaster: "Ticketmaster", community: "your neighbors" };
+    const seen = [];
+    communityEvents.forEach(function (e) {
+      const n = names[e.source] || e.host;
+      if (n && seen.indexOf(n) < 0) seen.push(n);
+    });
+    return seen.length > 1 ? seen.slice(0, -1).join(", ") + " and " + seen[seen.length - 1] : (seen[0] || "Salem");
+  }
+  function timeRange(ev) {
+    const end = endInfo(ev);
+    if (!end) return ev.time;
+    return ev.time + " – " + (end.estimated ? "about " : "") + end.time;
   }
 
   /* ------------------------------------------------------------------ *
@@ -315,9 +389,14 @@
     if (profile && profile.completed) badges.appendChild(el("span", "badge badge-" + m.level, LEVEL_TEXT[m.level]));
     if (ev.mine) badges.appendChild(el("span", "badge badge-mine", "✎ Posted by you"));
     else if (ev.community) badges.appendChild(el("span", "badge badge-neighbor", "🏡 Shared by a neighbor"));
+    else if (ev.source === "library") badges.appendChild(el("span", "badge badge-source", "📚 Salem Public Library"));
+    else if (ev.source === "willamette") badges.appendChild(el("span", "badge badge-source", "🏀 Willamette Bearcats"));
+    else if (ev.source === "heritage") badges.appendChild(el("span", "badge badge-source", "🏛 Willamette Heritage Center"));
+    else if (ev.source === "ticketmaster") badges.appendChild(el("span", "badge badge-source", "🎟 Ticketmaster"));
+    else if (ev.source && ev.source !== "sample") badges.appendChild(el("span", "badge badge-source", "📅 " + ev.host));
     if (badges.children.length) head.appendChild(badges);
     head.appendChild(el("h3", null, ev.title));
-    const whenText = m.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · " + ev.time;
+    const whenText = m.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }) + " · " + timeRange(ev);
     head.appendChild(el("p", "meta", "🗓 " + whenText));
     head.appendChild(el("p", "meta", "📍 " + ev.place + (ev.area ? " (" + areaText(ev.area) + ")" : "")));
     head.appendChild(el("p", "meta", "💵 " + ev.cost));
@@ -346,6 +425,13 @@
     details.appendChild(el("p", "meta", "Hosted by " + ev.host));
     const access = ev.needs.map(function (n) { return NEED_LABEL[n]; }).join(" · ");
     if (access) details.appendChild(el("p", "meta", "♿ " + access));
+    if (ev.url && /^https:\/\//.test(ev.url)) {
+      const link = el("a", "event-link", "Official listing & sign-up ↗");
+      link.href = ev.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      details.appendChild(link);
+    }
     c.appendChild(details);
 
     const actions = el("div", "card-actions");
@@ -356,8 +442,9 @@
     rsvp.addEventListener("click", function () {
       if (rsvps.has(ev.id)) rsvps.delete(ev.id); else rsvps.add(ev.id);
       save(RSVP_KEY, Array.from(rsvps));
-      renderHome();
-      if (rsvps.has(ev.id)) toast("Great! We saved " + ev.title + " to your events.");
+      rerender();
+      if (rsvps.has(ev.id)) toast("⭐ Saved “" + ev.title + "” to My saved events.", "View my events", openSaved);
+      else toast("Removed from My saved events.");
     });
     const more = el("button", "btn btn-secondary", "More details");
     more.type = "button";
@@ -369,11 +456,23 @@
     });
     const listen = el("button", "btn btn-ghost", "🔊 Listen");
     listen.type = "button";
+    listen.setAttribute("aria-pressed", "false");
+    if (speakingId === ev.id && window.speechSynthesis && window.speechSynthesis.speaking) {
+      speakingBtn = listen;   // card was redrawn mid-sentence: keep the Stop button
+      setListenLabel(listen, true);
+    }
     listen.addEventListener("click", function () {
-      speak(ev.title + ". " + whenText + ", at " + ev.place + ". " + ev.cost + ". " + ev.desc +
-        (m.reasons.length ? " We suggested this because: " + m.reasons.join(". ") + "." : ""));
+      if (speakingId === ev.id) { stopSpeaking(); return; }
+      speak(ev.title + ". " + whenText.replace("–", "to") + ", at " + ev.place + ". " + ev.cost + ". " + ev.desc +
+        (m.reasons.length ? " We suggested this because: " + m.reasons.join(". ") + "." : ""), listen, ev.id);
     });
     actions.append(rsvp, more, listen);
+    if (rsvps.has(ev.id)) {
+      const cal = el("button", "btn btn-ghost", "📅 Add to my calendar");
+      cal.type = "button";
+      cal.addEventListener("click", function () { downloadIcs(ev, m.date); });
+      actions.appendChild(cal);
+    }
     if (ev.mine) {
       const remove = el("button", "btn btn-link", "Remove my event");
       remove.type = "button";
@@ -400,6 +499,7 @@
   }
 
   function renderHome() {
+    updateSavedCount();
     $("greeting").textContent = greeting();
     const chips = $("interest-chips");
     chips.replaceChildren();
@@ -434,7 +534,26 @@
 
     const list = $("event-list");
     list.replaceChildren();
-    (sortMode === "match" && completed ? byMatch : byDate).forEach(function (m) { list.appendChild(card(m, false)); });
+    const ordered = sortMode === "match" && completed ? byMatch : byDate;
+    ordered.slice(0, shownCount).forEach(function (m) { list.appendChild(card(m, false)); });
+    const remaining = ordered.length - shownCount;
+    if (remaining > 0) {
+      const moreBtn = el("button", "btn btn-secondary show-more", "Show " + Math.min(PAGE, remaining) + " more events (" + remaining + " left)");
+      moreBtn.type = "button";
+      moreBtn.addEventListener("click", function () {
+        shownCount += PAGE;
+        renderHome();
+        const cards = list.querySelectorAll(".event-card");
+        const firstNew = cards[shownCount - PAGE];
+        if (firstNew) { firstNew.setAttribute("tabindex", "-1"); firstNew.focus(); }
+      });
+      list.appendChild(moreBtn);
+    }
+    $("source-note").textContent = realListings
+      ? "Real upcoming events from " + sourceNames() + ", picked for adults (children’s and teen programs are left out). Updated automatically."
+      : apiReachable
+        ? "Real listings are loading. Showing sample events for now."
+        : "Can’t reach live listings right now, so these are sample events.";
     document.querySelectorAll("[data-sort]").forEach(function (b) {
       b.setAttribute("aria-pressed", String(b.dataset.sort === sortMode));
       if (b.dataset.sort === "match") b.disabled = !completed;
@@ -443,24 +562,89 @@
   }
 
   document.querySelectorAll("[data-sort]").forEach(function (b) {
-    b.addEventListener("click", function () { sortMode = b.dataset.sort; renderHome(); });
+    b.addEventListener("click", function () { sortMode = b.dataset.sort; shownCount = PAGE; renderHome(); });
   });
 
-  function toast(msg) {
+  function toast(msg, actionLabel, onAction) {
     let t = $("toast");
     if (!t) { t = el("div", "toast"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
-    t.textContent = msg;
+    t.replaceChildren(el("span", null, msg));
+    if (actionLabel) {
+      const b = el("button", "toast-action", actionLabel + " →");
+      b.type = "button";
+      b.addEventListener("click", function () { t.classList.remove("show"); onAction(); });
+      t.appendChild(b);
+    }
     t.classList.add("show");
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(function () { t.classList.remove("show"); }, 3200);
+    toast.timer = setTimeout(function () { t.classList.remove("show"); }, actionLabel ? 7000 : 3200);
     if (readAloud) speak(msg);
+  }
+
+  /* ------------------------------------------------------------------ *
+   * My saved events
+   * ------------------------------------------------------------------ */
+  function savedMatches() {
+    return allEvents().filter(function (ev) { return rsvps.has(ev.id); }).map(score)
+      .sort(function (a, b) { return a.date - b.date; });
+  }
+  function updateSavedCount() {
+    const n = savedMatches().length;
+    $("saved-count").textContent = String(n);
+    $("open-saved").setAttribute("aria-label", "My saved events, " + n + " saved");
+  }
+  function renderSaved() {
+    const list = $("saved-list");
+    list.replaceChildren();
+    const mine = savedMatches();
+    mine.forEach(function (m) { list.appendChild(card(m, false)); });
+    $("saved-empty").hidden = mine.length > 0;
+    updateSavedCount();
+  }
+  function openSaved() {
+    closeChat(true);
+    renderSaved();
+    show("saved");
+    $("saved-title").focus();
+    if (readAloud) speak("My saved events. " + savedMatches().length + " saved.");
+  }
+  function rerender() {
+    if (!$("saved").hidden) renderSaved(); else renderHome();
+    updateSavedCount();
+  }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function downloadIcs(ev, d) {
+    const m = /^(\d+):(\d+) (AM|PM)$/.exec(ev.time || "");
+    const ymd = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+    let when;
+    if (m) {
+      const h = (Number(m[1]) % 12) + (m[3] === "PM" ? 12 : 0);
+      const start = h * 60 + Number(m[2]);
+      const endText = (endInfo(ev) || {}).time;
+      let end = parseClock(endText);
+      if (end == null || end <= start) end = Math.min(start + 90, 23 * 60 + 59);
+      when = "DTSTART:" + ymd + "T" + pad(h) + m[2] + "00\r\nDTEND:" + ymd + "T" + pad(Math.floor(end / 60)) + pad(end % 60) + "00";
+    } else {
+      when = "DTSTART;VALUE=DATE:" + ymd;
+    }
+    const esc = function (t) { return String(t || "").replace(/[\\;,]/g, "\\$&").replace(/\n/g, "\\n"); };
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Bloom//Salem//EN", "BEGIN:VEVENT",
+      "UID:bloom-" + ev.id + "-" + ymd + "@bloom", when, "SUMMARY:" + esc(ev.title), "LOCATION:" + esc(ev.place),
+      "DESCRIPTION:" + esc((ev.desc || "") + (ev.url ? " " + ev.url : "")), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([ics], { type: "text/calendar" }));
+    a.download = ev.title.replace(/[^a-z0-9]+/gi, "-").slice(0, 40) + ".ics";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast("Calendar file downloaded. Open it to add the event to your calendar.");
   }
 
   /* ------------------------------------------------------------------ *
    * Views
    * ------------------------------------------------------------------ */
   function show(view) {
-    ["survey", "matching", "home", "create"].forEach(function (v) { $(v).hidden = v !== view; });
+    ["survey", "matching", "home", "create", "saved"].forEach(function (v) { $(v).hidden = v !== view; });
     window.scrollTo(0, 0);
   }
   function openSurvey() {
@@ -664,6 +848,10 @@
   $("c-back").addEventListener("click", function () { showCStep(Math.max(0, cStep - 1)); });
   $("c-cancel").addEventListener("click", function () { renderHome(); show("home"); });
   $("open-create").addEventListener("click", openCreate);
+  $("open-saved").addEventListener("click", openSaved);
+  $("saved-back").addEventListener("click", function () { renderHome(); show("home"); });
+  $("saved-browse").addEventListener("click", function () { renderHome(); show("home"); });
+  if (location.hash === "#saved") { setTimeout(openSaved, 0); }
 
   /* ------------------------------------------------------------------ *
    * Display settings
@@ -678,7 +866,7 @@
     readAloud = !readAloud;
     e.currentTarget.setAttribute("aria-pressed", String(readAloud));
     e.currentTarget.textContent = "🔊 Read aloud: " + (readAloud ? "on" : "off");
-    if (!readAloud && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (!readAloud) stopSpeaking();
     else speak("Read aloud is on.");
   });
 
@@ -720,8 +908,16 @@
       if (r.text) addMessage(r.text, "assistant");
       if (r.custom && Array.isArray(r.custom.events)) {
         r.custom.events.forEach(function (ev) {
-          addMessage("📅 " + ev.title + " — " + ev.date + " at " + ev.time + ", " + ev.location, "assistant");
+          const when = /^\d{4}-\d{2}-\d{2}$/.test(ev.date)
+            ? eventDate(ev).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+            : ev.date;
+          const range = timeRange({ time: ev.time, endTime: ev.end_time || "", tags: [] });
+          addMessage("📅 " + ev.title + " — " + when + ", " + range + ", " + ev.location, "assistant");
         });
+      }
+      if (r.custom && r.custom.event_created) {
+        // Posted from the chat: put it on the board right away.
+        loadCommunityEvents().then(function () { renderHome(); toast("Your event is now on the Bloom board 🌸"); });
       }
       (r.buttons || []).forEach(function (btn) {
         const q = el("button", "btn btn-secondary", btn.title);
@@ -763,7 +959,21 @@
     $("chat").hidden = false;
     document.body.classList.add("chat-open");
     if (!messages.children.length) {
-      addMessage("Hi" + (profile && profile.name ? " " + profile.name : "") + "! I’m Bloom. Ask me about events, or tell me what you’re in the mood for this week.", "assistant");
+      addMessage("Hi" + (profile && profile.name ? " " + profile.name : "") + "! I’m Bloom. Here’s what I can do for you:\n" +
+        "• Find events happening this week\n" +
+        "• Search by type, like music or exercise\n" +
+        "• Post your own event for neighbors\n" +
+        "Tap a button below, or type your question.", "assistant");
+      quickReplies.replaceChildren();
+      [["📅 Events this week", "What events are happening this week?"],
+       ["🎵 Music events", "Find music events"],
+       ["🧘 Exercise classes", "Find exercise classes"],
+       ["➕ Post an event", "I want to post an event"]].forEach(function (q) {
+        const b = el("button", "btn btn-secondary", q[0]);
+        b.type = "button";
+        b.addEventListener("click", function () { sendMessage(q[1], true); });
+        quickReplies.appendChild(b);
+      });
     }
     input.focus();
   }
@@ -800,5 +1010,11 @@
    * ------------------------------------------------------------------ */
   if (location.hash === "#share") { openCreate(); }
   else if (profile) { renderHome(); show("home"); } else { openSurvey(); }
-  loadCommunityEvents().then(function () { if (!$("home").hidden) renderHome(); });
+  loadCommunityEvents().then(function () { if (!$("home").hidden || !$("saved").hidden) rerender(); });
+  async function refreshBoard() {
+    if (($("home").hidden && $("saved").hidden) || document.hidden) return;
+    if (await loadCommunityEvents()) rerender();
+  }
+  setInterval(refreshBoard, 60000);
+  document.addEventListener("visibilitychange", refreshBoard);
 }());

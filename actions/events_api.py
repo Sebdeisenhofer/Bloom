@@ -3,19 +3,25 @@
 Events are stored in the same SQLite database the Rasa action server uses,
 so anything posted here is also searchable by the "Ask Bloom" assistant.
 
-    GET    /api/events            -> community-posted events (today or later)
+    GET    /api/events            -> real (imported) + community-posted events, today onward
     POST   /api/events            -> create an event (JSON body)
     DELETE /api/events/<id>?user= -> remove an event you posted
     GET    /api/health            -> {"ok": true}
 """
 
 import json
+import os
 import re
+import threading
+import time as clock_time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from actions.actions import connect, initialize_database
+from actions import real_events
+
+REFRESH_HOURS = float(os.environ.get("REAL_EVENTS_REFRESH_HOURS", "3"))
 
 PORT = 5056
 AREAS = {"downtown", "west", "south", "northeast", "east", "keizer"}
@@ -69,6 +75,7 @@ def validate(body: dict) -> tuple[dict | None, str]:
         "cost": clean(body.get("cost"), 60) or "Free",
         "needs": ", ".join(needs),
         "created_by": user or "anonymous",
+        "source": "community",
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }, ""
 
@@ -80,6 +87,7 @@ def to_json(row) -> dict:
         "title": r["title"],
         "date": r["date"],
         "time": r["time"],
+        "endTime": r.get("end_time") or "",
         "place": r["location"],
         "area": r.get("area") or "",
         "tags": [t.strip() for t in (r.get("tags") or "").split(",") if t.strip()],
@@ -89,6 +97,8 @@ def to_json(row) -> dict:
         "host": r["host"],
         "desc": r["description"],
         "createdBy": r.get("created_by") or "",
+        "source": r.get("source") or ("community" if r.get("created_by") else "sample"),
+        "url": r.get("url") or "",
     }
 
 
@@ -112,10 +122,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"error": "Not found"})
         with connect() as db:
             rows = db.execute(
-                "SELECT * FROM events WHERE created_by IS NOT NULL AND date >= ? ORDER BY date, time",
+                "SELECT * FROM events WHERE (created_by IS NOT NULL OR source NOT IN ('', 'community')) "
+                "AND date >= ? ORDER BY date, time",
                 (date.today().isoformat(),),
             ).fetchall()
-        self.send(200, {"events": [to_json(r) for r in rows]})
+        events = [to_json(r) for r in rows]
+        self.send(200, {"events": events, "real": any(e["source"] not in ("community", "sample") for e in events)})
 
     def do_POST(self) -> None:
         if urlparse(self.path).path.rstrip("/") != "/api/events":
@@ -155,8 +167,18 @@ class Handler(BaseHTTPRequestHandler):
         print("events-api:", fmt % args, flush=True)
 
 
+def refresh_forever() -> None:
+    while True:
+        try:
+            real_events.refresh()
+        except Exception as error:  # never let the importer take the API down
+            print(f"events-api: refresh failed: {error}", flush=True)
+        clock_time.sleep(REFRESH_HOURS * 3600)
+
+
 def main() -> None:
     migrate()
+    threading.Thread(target=refresh_forever, daemon=True).start()
     print(f"Bloom events API listening on :{PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 

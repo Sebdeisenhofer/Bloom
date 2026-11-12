@@ -43,12 +43,23 @@ flows:
       - collect: event_host
         description: The host's name.
       - collect: event_description
-        description: A short description of the event.
+        description: An optional short description of the event. If the user says skip, no, or none, set it to "skip".
+        ask_before_filling: true
       - action: action_review_event
       - collect: event_confirmation
-        description: Whether the user confirms posting the event.
-      - action: action_save_event
-      - set_slots:
+        description: The user's yes or no answer to posting the event. Set "yes" for yes, yeah, sure, yep; "no" for no, nope.
+        ask_before_filling: true
+        next:
+          - if: slots.event_confirmation = "yes"
+            then: save_event
+          - else: not_posted
+      - id: not_posted
+        action: utter_event_not_posted
+        next: clear_event
+      - id: save_event
+        action: action_save_event
+      - id: clear_event
+        set_slots:
           - event_title: null
           - event_date: null
           - event_time: null
@@ -122,6 +133,12 @@ flows:
     name: pattern clarification
     steps:
       - action: utter_help
+
+  pattern_skip_question:
+    description: The visitor asks to skip the current question. Only the event description is optional.
+    name: pattern skip question
+    steps:
+      - action: action_skip_question
 
   pattern_completed:
     description: Finish a completed task without an extra prompt.

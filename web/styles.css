@@ -51,6 +51,7 @@ button, input, textarea { font: inherit; }
 .btn-secondary:hover { background: var(--sage-soft); }
 .btn-ghost { background: transparent; color: var(--brand-dark); border-color: var(--line); }
 .btn-ghost:hover { background: var(--sage-soft); }
+.btn-ghost.is-speaking { background: var(--brand-dark); color: #fff; border-color: var(--brand-dark); }
 .btn-link { background: none; border: none; color: var(--brand-dark); text-decoration: underline; min-height: 48px; padding: .5rem; }
 .btn-done { background: var(--petal-soft); color: #7a2440; border-color: var(--petal); }
 .pill {
@@ -268,3 +269,21 @@ body.high-contrast .btn-done { background: #000; color: #fff; }
   .review { grid-template-columns: 1fr; }
   .review dt { border-bottom: 0; padding-bottom: .2rem; }
 }
+
+/* ---------- real listings ---------- */
+.badge-source { background: #e8f0fb; color: #1d3f6e; border: 1px solid #9db7dd; }
+.source-note { margin: .6rem 0 0; color: var(--muted); font-size: .95rem; }
+.event-link { display: inline-block; margin-top: .4rem; font-weight: 700; color: var(--brand-dark); min-height: 44px; line-height: 44px; }
+.show-more { justify-self: center; margin-top: .5rem; }
+body.high-contrast .badge-source { background: #fff; color: #000; border: 2px solid #000; }
+
+/* ---------- my saved events ---------- */
+.count-pill { display: inline-block; min-width: 1.6em; padding: 0 .45em; margin-left: .25rem; border-radius: 999px; background: var(--petal); color: #fff; font-size: .9rem; line-height: 1.6; text-align: center; }
+.saved-title { font-size: clamp(2rem, 5vw, 2.6rem); color: var(--brand-dark); margin: 1rem 0 .3rem; outline: none; }
+.empty { text-align: center; padding: 2.5rem 1rem; background: var(--paper); border: 1px dashed var(--line); border-radius: 22px; margin-top: 1rem; }
+.empty p { margin: .3rem 0; }
+.empty-flower { font-size: 3rem; }
+.empty .btn { margin-top: 1rem; }
+.toast { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; justify-content: center; }
+.toast-action { min-height: 44px; padding: .3rem .9rem; border-radius: 999px; border: 2px solid #fff; background: #fff; color: var(--brand-dark); font: inherit; font-weight: 700; cursor: pointer; }
+body.high-contrast .count-pill { background: #000; }

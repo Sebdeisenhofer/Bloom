@@ -79,7 +79,7 @@ responses:
   utter_welcome:
     - text: "Hello, I’m Bloom, and I’m glad you’re here. I can help you find friendly local activities, or help you share an event."
   utter_welcome_back:
-    - text: "Welcome back. What would you like to do today?"
+    - text: "You’re all set! Here’s what I can help with:\n• Find events this week. Try “What’s on this week?”\n• Search by type. Try “Find music events” or “Find exercise classes”\n• Post your own event. Say “I want to post an event”"
   utter_ask_hobbies:
     - text: "What do you enjoy doing for fun?"
   utter_ask_partner_activities:
@@ -103,9 +103,16 @@ responses:
   utter_ask_event_host:
     - text: "What name should I list as the host?"
   utter_ask_event_description:
-    - text: "Please describe the event in a sentence or two."
+    - text: "Would you like to tell people a little about it, like what to bring or who it’s for? This is optional. Say “skip” if you’d rather not."
   utter_ask_event_confirmation:
     - text: "Does everything look right? Say yes to post it, or no to cancel."
+      buttons:
+        - title: "Yes, post it"
+          payload: '/SetSlots(event_confirmation=yes)'
+        - title: "No, don’t post it"
+          payload: '/SetSlots(event_confirmation=no)'
+  utter_event_not_posted:
+    - text: "No problem. I haven’t posted the event."
   utter_ask_interest_text:
     - text: "What would you like to try or find nearby?"
   utter_help:
@@ -129,3 +136,8 @@ actions:
   - action_cancel_flow
   - action_repeat_last_message
   - action_handle_free_text
+  - validate_event_date
+  - validate_event_time
+  - validate_event_confirmation
+  - validate_event_description
+  - action_skip_question

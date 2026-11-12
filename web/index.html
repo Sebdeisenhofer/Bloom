@@ -115,6 +115,7 @@
         <div class="hero-actions">
           <button type="button" id="edit-profile" class="btn btn-secondary">✏️ Update my interests</button>
           <button type="button" id="open-create" class="btn btn-secondary">➕ Share an event</button>
+          <button type="button" id="open-saved" class="btn btn-secondary">⭐ My saved events <span id="saved-count" class="count-pill">0</span></button>
           <button type="button" id="open-chat" class="btn btn-primary">💬 Ask Bloom</button>
         </div>
       </div>
@@ -122,6 +123,7 @@
       <div class="notice">
         <strong>You’re in control.</strong> Events are sorted by how well they match your answers. Nothing is hidden. Scroll down to see every event.
       </div>
+      <p id="source-note" class="source-note" role="status"></p>
 
       <h2 class="section-title">Top picks for you</h2>
       <div id="top-picks" class="top-picks"></div>
@@ -135,6 +137,20 @@
         </div>
       </div>
       <div id="event-list" class="event-list"></div>
+    </section>
+
+    <!-- ============ MY SAVED EVENTS ============ -->
+    <section id="saved" class="home" hidden aria-labelledby="saved-title">
+      <button type="button" id="saved-back" class="btn btn-ghost">← Back to all events</button>
+      <h1 id="saved-title" class="saved-title" tabindex="-1">⭐ My saved events</h1>
+      <p class="lead">Events you said you’re interested in, soonest first. You can add them to your calendar or remove them anytime.</p>
+      <div id="saved-list" class="event-list"></div>
+      <div id="saved-empty" class="empty" hidden>
+        <p class="empty-flower" aria-hidden="true">🌱</p>
+        <p><strong>No saved events yet.</strong></p>
+        <p>Tap <strong>“I’m interested”</strong> on any event and it will show up here.</p>
+        <button type="button" id="saved-browse" class="btn btn-primary">Browse events</button>
+      </div>
     </section>
 
     <!-- ============ SHARE AN EVENT ============ -->
@@ -152,7 +168,7 @@
             <input id="ev-title" type="text" maxlength="90" placeholder="For example: Thursday Morning Coffee Chat">
             <p class="field-label">What kind of event is it? <span class="optional">(pick any that fit, so the right people find it)</span></p>
             <div class="check-grid" id="ev-tag-options"></div>
-            <label class="field-label" for="ev-desc">Tell people about it <span class="optional">(optional)</span></label>
+            <label class="field-label" for="ev-desc">Tell people about it <span class="optional">(optional, you can leave this blank)</span></label>
             <textarea id="ev-desc" rows="3" maxlength="800" placeholder="What will happen? Who is it for? Anything to bring?"></textarea>
           </fieldset>
 
@@ -225,7 +241,7 @@
     <div id="quick-replies" class="quick-replies"></div>
     <form id="chat-form" class="chat-form">
       <label for="message-input" class="sr-only">Your message</label>
-      <textarea id="message-input" rows="2" placeholder="Ask about events, or say what you’re in the mood for"></textarea>
+      <textarea id="message-input" rows="2" placeholder="For example: Find music events this week"></textarea>
       <div class="chat-actions">
         <button id="mic-button" class="btn btn-secondary" type="button">🎙 Speak</button>
         <button id="send-button" class="btn btn-primary" type="submit">Send</button>

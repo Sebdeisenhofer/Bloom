@@ -91,9 +91,15 @@ def initialize_database() -> None:
             ("needs", "TEXT NOT NULL DEFAULT ''"),
             ("created_by", "TEXT"),
             ("created_at", "TEXT"),
+            # '' = built-in sample, 'community' = posted by a neighbor, otherwise a real feed (e.g. 'library').
+            ("source", "TEXT NOT NULL DEFAULT ''"),
+            ("external_id", "TEXT"),
+            ("url", "TEXT NOT NULL DEFAULT ''"),
+            ("end_time", "TEXT NOT NULL DEFAULT ''"),
         ):
             if name not in existing:
                 db.execute(f"ALTER TABLE events ADD COLUMN {name} {ddl}")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS events_external_id ON events(external_id)")
         count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
         if count == 0:
             db.executemany(
@@ -169,8 +175,225 @@ def extract_filters(text: str) -> dict[str, str]:
     return filters
 
 
+def has_real_events(db: sqlite3.Connection) -> bool:
+    return db.execute("SELECT 1 FROM events WHERE source NOT IN ('', 'community') LIMIT 1").fetchone() is not None
+
+
+def current_events(db: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Events people can actually attend.
+
+    Once real listings have been imported, the built-in sample events are retired and
+    past events are dropped. Without real listings (offline, tests) the samples remain.
+    """
+    if has_real_events(db):
+        rows = db.execute(
+            "SELECT * FROM events WHERE (source != '' OR created_by IS NOT NULL) AND date >= ?",
+            (date.today().isoformat(),),
+        )
+    else:
+        rows = db.execute("SELECT * FROM events")
+    return [dict(row) for row in rows]
+
+
+# ---------------------------------------------------------------------------
+# Understanding dates and times people type or say ("next Tuesday", "2pm")
+# ---------------------------------------------------------------------------
+WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+MONTHS = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+NUMBER_WORDS = {w: i for i, w in enumerate(
+    ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"])}
+
+
+def parse_event_date(text: str, today: date | None = None) -> date | None:
+    from datetime import timedelta
+
+    today = today or date.today()
+    t = str(text or "").lower().strip()
+    t = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", t)
+    if not t:
+        return None
+    if "today" in t or "tonight" in t:
+        return today
+    if "day after tomorrow" in t:
+        return today + timedelta(days=2)
+    if "tomorrow" in t:
+        return today + timedelta(days=1)
+    m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", t)
+    if m:
+        try:
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        except ValueError:
+            return None
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b", t)
+    if m:
+        year = int(m[3]) if m[3] else today.year
+        year = year + 2000 if year < 100 else year
+        try:
+            d = date(year, int(m[1]), int(m[2]))
+        except ValueError:
+            return None
+        return d.replace(year=d.year + 1) if not m[3] and d < today else d
+    m = re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b", t) or \
+        re.search(r"\b(\d{1,2})\s+(?:of\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b", t)
+    if m:
+        month_word, day_num = (m[1], m[2]) if m[1].isalpha() else (m[2], m[1])
+        try:
+            d = date(today.year, MONTHS[month_word[:3]], int(day_num))
+        except ValueError:
+            return None
+        return d.replace(year=d.year + 1) if d < today else d
+    for i, name in enumerate(WEEKDAYS):
+        if name in t or re.search(rf"\b{name[:3]}\b", t):
+            if "next week" in t:  # that weekday in the following Monday–Sunday week
+                return today + timedelta(days=7 - today.weekday() + i)
+            ahead = (i - today.weekday()) % 7  # the coming one ("Friday" said on a Friday = today)
+            if "next" in t and ahead == 0:
+                ahead = 7
+            return today + timedelta(days=ahead)
+    m = re.search(r"\bin (\d+|a|one|two|three) (day|week)s?\b", t)
+    if m:
+        n = 1 if m[1] in ("a", "one") else NUMBER_WORDS.get(m[1]) or int(m[1])
+        return today + timedelta(days=n * (7 if m[2] == "week" else 1))
+    return None
+
+
+def parse_event_time(text: str) -> str | None:
+    """Return a time like '2:30 PM', or None if it can't be understood."""
+    t = str(text or "").lower().strip().replace(".", "")
+    if not t:
+        return None
+    if "noon" in t or "midday" in t:
+        return "12:00 PM"
+    for word, num in NUMBER_WORDS.items():
+        t = re.sub(rf"\b{word}\b", str(num), t)
+    m = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a m|p m|in the morning|in the afternoon|in the evening|at night|o'?clock)?\b", t)
+    if not m:
+        return None
+    hour, minute, suffix = int(m[1]), int(m[2] or 0), (m[3] or "").replace(" ", "")
+    if minute > 59 or hour > 23:
+        return None
+    if "half past" in t:
+        minute = 30
+    elif "quarter past" in t:
+        minute = 15
+    if suffix in ("pm", "intheafternoon", "intheevening", "atnight") and hour < 12:
+        hour += 12
+    elif suffix in ("am", "inthemorning") and hour == 12:
+        hour = 0
+    elif not suffix and 1 <= hour <= 6:
+        hour += 12  # "3" for a community event almost always means 3 PM
+    if not 0 <= hour <= 23:
+        return None
+    return f"{(hour + 11) % 12 + 1}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
+
+
+WHAT_YOU_CAN_DO = (
+    "Welcome back! Here’s what I can help with:\n"
+    "• Find events this week. Try “What’s on this week?”\n"
+    "• Search by type. Try “Find music events” or “Find exercise classes”\n"
+    "• Post your own event. Say “I want to post an event”"
+)
+
+INTEREST_KEYWORDS = {
+    "gardening": ("garden", "plant", "seed", "flower", "compost"),
+    "music": ("music", "concert", "sing", "choir", "band", "jazz", "ukulele", "symphony", "orchestra", "musician"),
+    "crafts": ("craft", "knit", "knitting", "crochet", "quilt", "sew", "paint", "art", "artist", "pottery", "draw", "journal", "journaling"),
+    "books": ("book", "read", "reader", "author", "poetry", "poem", "writing", "writer", "novel"),
+    "walking": ("walk", "hike", "hiking", "nature", "bird", "birding", "trail", "park"),
+    "fitness": ("yoga", "tai chi", "exercise", "fitness", "stretch", "zumba", "balance", "pilates"),
+    "games": ("game", "bingo", "chess", "card", "bridge", "puzzle", "trivia", "mahjong", "cribbage", "lego"),
+    "cooking": ("cook", "potluck", "baking", "recipe", "food", "lunch", "dinner", "tea"),
+    "faith": ("church", "faith", "prayer", "worship", "bible", "spiritual"),
+    "volunteering": ("volunteer", "food bank", "donate", "donation"),
+    "learning": ("class", "workshop", "learn", "lecture", "presentation", "esl", "seminar", "course", "citizenship", "tutor"),
+    "tech": ("tech", "technology", "computer", "phone", "smartphone", "tablet", "digital", "internet", "email", "laptop", "ipad"),
+    "history": ("history", "historical", "museum", "heritage", "genealogy", "ancestry"),
+    "dancing": ("dance", "dancing", "ballroom", "swing"),
+    "health": ("health", "medicare", "wellness", "memory", "nutrition", "blood pressure", "caregiver", "dementia"),
+    "sports": ("football", "basketball", "volleyball", "soccer", "baseball", "softball", "swim", "swimming",
+               "bearcats", "athletics", "tennis"),
+    "movies": ("movie", "film", "theater", "theatre", "play", "comedy", "cinema"),
+    "family": ("kid", "child", "children", "storytime", "toddler", "preschool", "teen", "family", "families",
+               "grandparent", "baby", "babies", "infant", "tween"),
+    "social": ("coffee", "social", "conversation", "friendship", "club", "chat", "discussion", "gathering", "neighbor"),
+}
+_INTEREST_PATTERNS = {
+    key: re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")(?:s|es|ing|ers?)?\b", re.I)
+    for key, words in INTEREST_KEYWORDS.items()
+}
+
+
+def infer_interest_tags(*texts: str) -> list[str]:
+    blob = " ".join(str(t or "") for t in texts)
+    return [key for key, pattern in _INTEREST_PATTERNS.items() if pattern.search(blob)]
+
+
+def infer_area(location: str) -> str:
+    loc = str(location or "").lower()
+    for area, words in (
+        ("west", ("west salem", "wallace", "edgewater")),
+        ("keizer", ("keizer",)),
+        ("south", ("south salem", "commercial st se", "liberty rd s", "minto", "bush", "fairmount")),
+        ("northeast", ("portland rd", "lancaster", "silverton rd", "northeast", " ne")),
+        ("east", ("state st", "southeast", " se", "east salem")),
+        ("downtown", ("downtown", "main library", "liberty st", "riverfront", "court st", "state capitol")),
+    ):
+        if any(w in loc for w in words):
+            return area
+    return ""
+
+
+# ---------------------------------------------------------------------------
+# Yes / no and "skip" answers
+# ---------------------------------------------------------------------------
+YES_WORDS = ("yes", "yeah", "yea", "yep", "yup", "sure", "ok", "okay", "correct", "right", "true",
+             "confirm", "confirmed", "post", "please", "absolutely", "definitely", "of course", "sounds good",
+             "looks good", "that's right", "thats right", "go ahead", "do it", "y")
+NO_WORDS = ("no", "nope", "nah", "not", "don't", "dont", "cancel", "stop", "false", "wrong", "wait", "n",
+            "never mind", "nevermind", "hold on")
+SKIP_WORDS = ("skip", "no", "none", "nope", "nothing", "n/a", "na", "no thanks", "no thank you", "pass",
+              "not really", "leave it blank", "blank", "-", "no description")
+NO_DESCRIPTION = ""  # stored when the optional description is skipped
+
+
+def parse_yes_no(text: Any) -> bool | None:
+    """True for yes-like answers, False for no-like answers, None if unclear.
+
+    Handles real booleans and the "True"/"False" strings the LLM command generator writes.
+    "No" wins over "yes" ("yes, but no" / "not yet") so an event is never posted by mistake.
+    """
+    if isinstance(text, bool):
+        return text
+    t = re.sub(r"[^a-z' /]", " ", str(text or "").lower().replace("’", "'"))
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return None
+    padded = f" {t} "
+    if any(f" {w} " in padded for w in NO_WORDS):
+        return False
+    if any(f" {w} " in padded for w in YES_WORDS):
+        return True
+    return None
+
+
+def is_skip(text: Any) -> bool:
+    t = re.sub(r"[^a-z/ -]", " ", str(text or "").lower()).strip()
+    t = re.sub(r"\s+", " ", t)
+    return t in SKIP_WORDS or t.startswith(("skip", "no description", "nothing to add", "none"))
+
+
+def friendly_date(iso: str) -> str:
+    try:
+        return date.fromisoformat(iso).strftime("%A, %B %-d")
+    except (ValueError, TypeError):
+        return str(iso)
+
+
 def event_time_period(value: str) -> str:
     parts = value.lower().split()
+    if not parts or not re.match(r"^\d{1,2}(:\d{2})?$", parts[0]):
+        return "afternoon"
     hour = int(parts[0].split(":")[0])
     suffix = parts[-1] if len(parts) > 1 else ""
     if suffix == "am" and hour != 12:
@@ -196,7 +419,7 @@ def rank_events(profile: dict[str, Any], query: str = "") -> list[dict[str, Any]
         existing = str(profile.get("interests", ""))
         profile["interests"] = f"{existing}, {filters['category']}".strip(", ")
     with connect() as db:
-        rows = [dict(row) for row in db.execute("SELECT * FROM events")]
+        rows = current_events(db)
     ranked = []
     for event in rows:
         tags = words(f"{event['tags']} {event['category']} {event['title']} {event['description']}")
@@ -223,7 +446,10 @@ def rank_events(profile: dict[str, Any], query: str = "") -> list[dict[str, Any]
         if filters.get("category") and filters["category"] in (event["category"] + " " + event["title"] + " " + event["tags"]).lower():
             score += 3
             reasons.append(f"it’s about {filters['category']}")
-        event_day = date.fromisoformat(event["date"]).strftime("%A").lower()
+        try:
+            event_day = date.fromisoformat(event["date"]).strftime("%A").lower()
+        except ValueError:
+            event_day = ""
         if filters.get("day") and filters["day"] == event_day:
             score += 2
             reasons.append(f"it’s on {filters['day']}")
@@ -240,6 +466,7 @@ def event_card(event: dict[str, Any]) -> dict[str, Any]:
         "title": event["title"],
         "date": event["date"],
         "time": event["time"],
+        "end_time": event.get("end_time") or "",
         "location": event["location"],
         "category": event["category"],
         "description": event["description"],
@@ -257,7 +484,7 @@ class ActionLoadProfile(Action):
         user_id = tracker.sender_id or "sample-salem-user"
         profile = profile_for(user_id)
         if profile:
-            dispatcher.utter_message(text="Welcome back. What would you like to do today?")
+            dispatcher.utter_message(text=WHAT_YOU_CAN_DO)
         else:
             dispatcher.utter_message(text="Hello, I’m glad you’re here. Let’s find out what you enjoy.")
         events = [SlotSet("user_id", user_id), SlotSet("profile_exists", profile is not None)]
@@ -287,25 +514,150 @@ class ActionSaveEvent(Action):
         return "action_save_event"
 
     def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
-        initialize_database()
-        confirmation = str(tracker.get_slot("event_confirmation") or "").strip().lower()
-        if not (confirmation.startswith(("yes", "yep", "sure", "confirm")) or confirmation in ("post it", "that’s right", "thats right")):
+        try:
+            initialize_database()
+        except sqlite3.Error as error:
+            print(f"action_save_event: database unavailable: {error}", flush=True)
+            dispatcher.utter_message(text="I’m sorry, something went wrong and your event was not posted. Please try again in a moment.")
+            return []
+        # The flow only reaches this action after a confirmed "yes" (see create_event in flows.yml);
+        # this check is a second safety net so nothing is posted without a clear yes.
+        if parse_yes_no(tracker.get_slot("event_confirmation")) is not True:
             dispatcher.utter_message(text="No problem. I haven’t posted the event.")
             return []
         fields = [tracker.get_slot(key) for key in (
-            "event_title", "event_date", "event_time", "event_location", "event_host", "event_description",
+            "event_title", "event_date", "event_time", "event_location", "event_host",
         )]
         if not all(fields):
             dispatcher.utter_message(text="I’m missing a detail, so I haven’t posted it. We can try again when you’re ready.")
             return []
-        with connect() as db:
-            cursor = db.execute(
-                """INSERT INTO events (title, date, time, location, category, tags, group_size, description, host, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)""",
-                (fields[0], fields[1], fields[2], fields[3], "Community", "community", "small", fields[5], fields[4], tracker_user(tracker)),
-            )
-        dispatcher.utter_message(text=f"Your event, {fields[0]}, is posted. Thank you for bringing people together!", json_message={"event_created": {"id": cursor.lastrowid, "title": fields[0]}})
+        title, raw_date, raw_time, location, host = (str(f).strip() for f in fields)
+        description = str(tracker.get_slot("event_description") or "").strip()
+        if is_skip(description):
+            description = NO_DESCRIPTION
+        day = parse_event_date(raw_date)
+        start = parse_event_time(raw_time)
+        if not day or day < date.today() or not start:
+            dispatcher.utter_message(text="I couldn’t understand the date or time, so I haven’t posted it yet. Let’s try again. You can say something like “next Tuesday at 2 PM”.")
+            return []
+        tags = infer_interest_tags(title, description) or ["social"]
+        try:
+            with connect() as db:  # commits on success
+                cursor = db.execute(
+                    """INSERT INTO events (title, date, time, location, category, tags, group_size, description, host,
+                                           area, cost, needs, created_by, created_at, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, 'community')""",
+                    (title, day.isoformat(), start, location, "Community", ", ".join(tags), "small",
+                     description or f"A community event hosted by {host}.", host,
+                     infer_area(location), "Free", "", tracker_user(tracker)),
+                )
+                saved = db.execute("SELECT id FROM events WHERE id = ?", (cursor.lastrowid,)).fetchone()
+            if not saved:
+                raise sqlite3.DatabaseError("event row missing after insert")
+        except sqlite3.Error as error:
+            print(f"action_save_event: could not save event: {error}", flush=True)
+            dispatcher.utter_message(text="I’m sorry, something went wrong and your event was not posted. Please try again in a moment.")
+            return []
+        dispatcher.utter_message(
+            text=f"Your event, {title}, is posted for {friendly_date(day.isoformat())} at {start}. Neighbors can see it on the Bloom board right now. Thank you for bringing people together!",
+            json_message={"event_created": {"id": cursor.lastrowid, "title": title}},
+        )
         return []
+
+
+class ValidateEventDate(Action):
+    """Runs after the assistant collects event_date; turns "next Tuesday" into a real date."""
+
+    def name(self) -> str:
+        return "validate_event_date"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        raw = tracker.get_slot("event_date")
+        if raw is None:
+            return []
+        day = parse_event_date(str(raw))
+        if not day:
+            dispatcher.utter_message(text="Sorry, I didn’t catch the date. You can say “this Saturday”, “November 20”, or “11/20”.")
+            return [SlotSet("event_date", None)]
+        if day < date.today():
+            dispatcher.utter_message(text="That date has already passed. What upcoming day will it be?")
+            return [SlotSet("event_date", None)]
+        return [SlotSet("event_date", day.isoformat())]
+
+
+class ValidateEventConfirmation(Action):
+    """Runs after the "post it?" question. Reads the person's own words, not just the LLM's guess."""
+
+    def name(self) -> str:
+        return "validate_event_confirmation"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        if tracker.get_slot("event_confirmation") is None:
+            return []  # not answered yet: let the flow ask the question
+        said = tracker.latest_message.get("text") or ""
+        if said.startswith("/SetSlots"):  # a Yes/No button was pressed: trust its value
+            said = ""
+        answer = parse_yes_no(said)
+        if answer is None:
+            answer = parse_yes_no(tracker.get_slot("event_confirmation"))
+        if answer is None:
+            dispatcher.utter_message(text="Sorry, I didn’t catch that. Please say “yes” to post your event, or “no” to cancel.")
+            return [SlotSet("event_confirmation", None)]
+        # Normalized to exactly "yes"/"no" so the flow's branch condition is unambiguous.
+        return [SlotSet("event_confirmation", "yes" if answer else "no")]
+
+
+class ValidateEventDescription(Action):
+    """The description is optional: "skip", "no" or "none" leaves it blank."""
+
+    def name(self) -> str:
+        return "validate_event_description"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        value = tracker.get_slot("event_description")
+        if value is None:
+            return []  # not answered yet
+        said = tracker.latest_message.get("text") or ""
+        if is_skip(said) or is_skip(value):
+            return [SlotSet("event_description", "skip")]
+        return []
+
+
+class ActionSkipQuestion(Action):
+    """Replaces Rasa's default "let's complete this step together" when someone says "skip".
+
+    Only the event description may be skipped; other questions get a gentle explanation.
+    """
+
+    def name(self) -> str:
+        return "action_skip_question"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        at_description_step = (
+            tracker.get_slot("event_host") is not None and tracker.get_slot("event_description") is None
+        )
+        if at_description_step:
+            dispatcher.utter_message(text="No problem, I’ll leave the description blank.")
+            return [SlotSet("event_description", "skip")]
+        dispatcher.utter_message(text="I need this one to continue. A few words is plenty, or say “cancel” to stop.")
+        return []
+
+
+class ValidateEventTime(Action):
+    """Runs after the assistant collects event_time; turns "2pm" or "noon" into "2:00 PM"."""
+
+    def name(self) -> str:
+        return "validate_event_time"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        raw = tracker.get_slot("event_time")
+        if raw is None:
+            return []
+        start = parse_event_time(str(raw))
+        if not start:
+            dispatcher.utter_message(text="Sorry, I didn’t catch the time. You can say “2 PM”, “10:30 in the morning”, or “noon”.")
+            return [SlotSet("event_time", None)]
+        return [SlotSet("event_time", start)]
 
 
 class ActionReviewEvent(Action):
@@ -321,9 +673,15 @@ class ActionReviewEvent(Action):
             ("event_host", "Host"),
             ("event_description", "Details"),
         )
-        summary = "Here’s what I have:\n" + "\n".join(
-            f"{label}: {tracker.get_slot(slot) or 'not provided'}" for slot, label in labels
-        )
+        def shown(slot: str) -> str:
+            value = tracker.get_slot(slot)
+            if slot == "event_date" and value:
+                return friendly_date(str(value))
+            if slot == "event_description" and (not value or is_skip(value)):
+                return "None (optional)"
+            return str(value) if value else "not provided"
+
+        summary = "Here’s what I have:\n" + "\n".join(f"{label}: {shown(slot)}" for slot, label in labels)
         dispatcher.utter_message(text=summary)
         return []
 
@@ -342,9 +700,11 @@ class ActionSearchEvents(Action):
         if category and category not in str(profile.get("interests", "")).lower():
             profile["interests"] = f"{profile.get('interests', '')}, {category}".strip(", ")
             profile = save_profile(tracker, profile)
-        events = [event_card(event) for event in rank_events(profile, query)]
+        ranked = rank_events(profile, query)
+        events = [event_card(event) for event in ranked[:8]]
         dispatcher.utter_message(
-            text=f"I found {len(events)} local events. They’re ordered by how well they may fit, and I’ve kept every option in the list.",
+            text=(f"I found {len(ranked)} local events. Here are the {len(events)} that may fit you best. "
+                  "Every event is still listed on the Bloom home page, so nothing is hidden."),
             json_message={"events": events},
         )
         buttons = [{"title": f"Tell me about {event['title']}", "payload": f"Tell me more about event {event['id']}"} for event in events[:3]]
@@ -369,7 +729,7 @@ class ActionGetEventDetails(Action):
             return []
         data = dict(event)
         dispatcher.utter_message(
-            text=f"{data['title']} is on {data['date']} at {data['time']}, at {data['location']}. {data['description']} Would you like to go to this?",
+            text=f"{data['title']} is on {friendly_date(data['date'])} at {data['time']}, at {data['location']}. {data['description']} Would you like to go to this?",
             json_message={"event_details": event_card(data)},
             buttons=[{"title": "Yes, I’d like to go", "payload": f"Yes, I’d like to go to event {data['id']}"}, {"title": "Not this time", "payload": "Not this time"}],
         )
@@ -413,7 +773,7 @@ class ActionUpdateInterests(Action):
         if text.strip() and text.strip().lower() not in existing.lower():
             profile["interests"] = f"{existing}, {text.strip()}".strip(", ")
         values = save_profile(tracker, profile)
-        cards = [event_card(event) for event in rank_events(values, text)]
+        cards = [event_card(event) for event in rank_events(values, text)[:8]]
         dispatcher.utter_message(text="I’ve added that to your interests. Here are local events you might like, with the closest matches first.", json_message={"events": cards})
         return [SlotSet(key, value) for key, value in values.items()] + [SlotSet("interest_text", None)]
 
