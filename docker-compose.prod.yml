@@ -1,0 +1,39 @@
+# Production overlay for a public server (for example a DigitalOcean droplet).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from local development:
+# * Caddy serves the site on ports 80/443 with automatic HTTPS (Let's Encrypt).
+# * Rasa's HTTP API (5006) and nginx (8081) are NOT published. Only Caddy is public,
+#   and nginx only forwards /webhooks/ (chat) and /api/ (events).
+# * Every service restarts automatically after a crash or a server reboot.
+services:
+  action-server:
+    restart: unless-stopped
+  events-api:
+    restart: unless-stopped
+  rasa:
+    restart: unless-stopped
+    ports: !reset []
+  web:
+    restart: unless-stopped
+    ports: !reset []
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      BLOOM_DOMAIN: ${BLOOM_DOMAIN:?Set BLOOM_DOMAIN in .env (setup-server.sh does this)}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,5 +1,9 @@
 # Putting Bloom online (Vercel + backend)
 
+> **Recommended instead:** [deploy-digitalocean.md](deploy-digitalocean.md) runs the website and the
+> Rasa agent together on one always-on server, with no Vercel needed. Use this page only if you
+> specifically want the site on a `*.vercel.app` address in front of that server.
+
 Bloom has two halves:
 
 | Part | What it is | Where it can run |

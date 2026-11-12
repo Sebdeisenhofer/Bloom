@@ -1,0 +1,5 @@
+# Public entry point. Caddy gets and renews the HTTPS certificate automatically.
+{$BLOOM_DOMAIN} {
+	encode gzip
+	reverse_proxy web:80
+}
