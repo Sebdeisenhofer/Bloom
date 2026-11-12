@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time setup for Bloom on a fresh Ubuntu server (e.g. a DigitalOcean droplet).
 #
-#   git clone https://github.com/sebastiandeisenhofer/Bloom.git /opt/bloom
+#   git clone https://github.com/Sebdeisenhofer/Bloom.git /opt/bloom
 #   bash /opt/bloom/deploy/setup-server.sh
 #
 # It installs Docker, adds swap, opens the firewall for SSH/HTTP/HTTPS, asks for your

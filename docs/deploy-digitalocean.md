@@ -28,7 +28,7 @@ Open a terminal on your computer, then:
 
 ```bash
 ssh root@YOUR_DROPLET_IP
-git clone https://github.com/sebastiandeisenhofer/Bloom.git /opt/bloom
+git clone https://github.com/Sebdeisenhofer/Bloom.git /opt/bloom
 bash /opt/bloom/deploy/setup-server.sh
 ```
 

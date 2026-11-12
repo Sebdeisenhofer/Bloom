@@ -51,7 +51,7 @@ step 3 whenever you restart it.
    droplet (the GitHub Student Developer Pack includes credit).
 2. Install Docker, then run:
    ```bash
-   git clone https://github.com/sebastiandeisenhofer/bloom.git && cd bloom
+   git clone https://github.com/Sebdeisenhofer/bloom.git && cd bloom
    cp .env.example .env && nano .env      # paste RASA_PRO_LICENSE here, on the server only
    docker compose up -d --build
    ```
