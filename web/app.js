@@ -139,7 +139,8 @@
       id: "c" + e.id, apiId: e.id, community: community, source: e.source, url: e.url || "",
       mine: community && e.createdBy === senderId,
       title: e.title, date: e.date, time: e.time, endTime: e.endTime || "", tod: timeOfDay(e.time), place: e.place, area: e.area,
-      tags: e.tags || [], group: e.group, cost: e.cost, needs: e.needs || [], host: e.host, desc: e.desc
+      tags: e.tags || [], group: e.group, cost: e.cost, needs: e.needs || [], host: e.host, desc: e.desc,
+      posterName: e.posterName || "", posterEvents: e.posterEvents || 0
     };
   }
   // Returns true if the list changed since the last load.
@@ -315,8 +316,11 @@
   });
 
   function finishSurvey(p) {
+    p.email = (profile && profile.email) || "";
     profile = p;
     save(KEY, profile);
+    if (profile.name) syncProfile();
+    if (afterSurvey === "profile") { afterSurvey = "home"; openProfile(); toast("Your preferences are updated."); return; }
     show("matching");
     setTimeout(function () { renderHome(); show("home"); }, p.completed ? 1100 : 200);
   }
@@ -388,7 +392,7 @@
     const badges = el("div", "badges");
     if (profile && profile.completed) badges.appendChild(el("span", "badge badge-" + m.level, LEVEL_TEXT[m.level]));
     if (ev.mine) badges.appendChild(el("span", "badge badge-mine", "✎ Posted by you"));
-    else if (ev.community) badges.appendChild(el("span", "badge badge-neighbor", "🏡 Shared by a neighbor"));
+    else if (ev.community) badges.appendChild(el("span", "badge badge-neighbor", "🏡 Shared by " + (ev.posterName || "a neighbor")));
     else if (ev.source === "library") badges.appendChild(el("span", "badge badge-source", "📚 Salem Public Library"));
     else if (ev.source === "willamette") badges.appendChild(el("span", "badge badge-source", "🏀 Willamette Bearcats"));
     else if (ev.source === "heritage") badges.appendChild(el("span", "badge badge-source", "🏛 Willamette Heritage Center"));
@@ -423,6 +427,12 @@
     details.hidden = true;
     details.appendChild(el("p", null, ev.desc));
     details.appendChild(el("p", "meta", "Hosted by " + ev.host));
+    if (ev.community) {
+      const who = ev.posterName
+        ? "Shared on Bloom by " + ev.posterName + " · " + ev.posterEvents + (ev.posterEvents === 1 ? " event" : " events") + " shared so far"
+        : "Shared on Bloom by a neighbor without a profile";
+      details.appendChild(el("p", "meta poster", "👤 " + who));
+    }
     const access = ev.needs.map(function (n) { return NEED_LABEL[n]; }).join(" · ");
     if (access) details.appendChild(el("p", "meta", "♿ " + access));
     if (ev.url && /^https:\/\//.test(ev.url)) {
@@ -467,11 +477,30 @@
         (m.reasons.length ? " We suggested this because: " + m.reasons.join(". ") + "." : ""), listen, ev.id);
     });
     actions.append(rsvp, more, listen);
-    if (rsvps.has(ev.id)) {
-      const cal = el("button", "btn btn-ghost", "📅 Add to my calendar");
-      cal.type = "button";
-      cal.addEventListener("click", function () { downloadIcs(ev, m.date); });
-      actions.appendChild(cal);
+    const cal = el("button", "btn btn-ghost", "📅 Add to calendar");
+    cal.type = "button";
+    cal.setAttribute("aria-expanded", "false");
+    actions.appendChild(cal);
+    const calPanel = el("div", "cal-panel");
+    calPanel.hidden = true;
+    calPanel.appendChild(el("p", "cal-title", "Add “" + ev.title + "” to:"));
+    const g = el("a", "btn btn-secondary btn-small", "Google Calendar ↗");
+    g.href = googleCalendarUrl(ev, m.date);
+    g.target = "_blank";
+    g.rel = "noopener noreferrer";
+    const ics = el("button", "btn btn-secondary btn-small", "Apple / Outlook / other (.ics)");
+    ics.type = "button";
+    ics.addEventListener("click", function () { downloadIcs(ev, m.date); });
+    calPanel.append(g, ics);
+    cal.addEventListener("click", function () {
+      calPanel.hidden = !calPanel.hidden;
+      cal.setAttribute("aria-expanded", String(!calPanel.hidden));
+    });
+    if (ev.community && !ev.mine) {
+      const report = el("button", "btn btn-link report-link", "🚩 Report a problem");
+      report.type = "button";
+      report.addEventListener("click", function () { reportEvent(ev); });
+      details.appendChild(report);
     }
     if (ev.mine) {
       const remove = el("button", "btn btn-link", "Remove my event");
@@ -489,7 +518,20 @@
       actions.appendChild(remove);
     }
     c.appendChild(actions);
+    c.appendChild(calPanel);
     return c;
+  }
+
+  async function reportEvent(ev) {
+    if (!window.confirm("Report “" + ev.title + "” as fake, unsafe or wrong? Events reported by several people are hidden until reviewed.")) return;
+    try {
+      const res = await fetch("/api/events/" + ev.apiId + "/report", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: senderId })
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      toast("Thank you. We’ve noted your report.");
+      if (await loadCommunityEvents()) rerender();
+    } catch (e) { toast("Sorry, we couldn’t send that report right now."); }
   }
 
   function greeting() {
@@ -498,31 +540,73 @@
     return part + (profile && profile.name ? ", " + profile.name : "") + " 🌸";
   }
 
+  /* ------------------------------------------------------------------ *
+   * Search: text + kind + when. Clearing it always brings every event back.
+   * ------------------------------------------------------------------ */
+  INTERESTS.forEach(function (i) { $("kind-filter").appendChild(new Option(i[1] + " " + i[2], i[0])); });
+  function searchActive() {
+    return !!($("search-input").value.trim() || $("kind-filter").value || $("when-filter").value);
+  }
+  function matchesSearch(m) {
+    const ev = m.ev;
+    const kind = $("kind-filter").value;
+    if (kind && ev.tags.indexOf(kind) === -1) return false;
+    const when = $("when-filter").value;
+    if (when) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = Math.round((m.date - today) / 86400000);
+      if (when === "today" && days !== 0) return false;
+      if (when === "week" && days > 6) return false;
+      if (when === "month" && days > 30) return false;
+      if (when === "weekend") {
+        const toSat = (6 - today.getDay() + 7) % 7;
+        const dow = m.date.getDay();
+        if (!((dow === 6 || dow === 0) && days <= toSat + 1)) return false;
+      }
+    }
+    const words = $("search-input").value.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return true;
+    const hay = [ev.title, ev.desc, ev.place, ev.host, ev.posterName, areaText(ev.area)]
+      .concat(ev.tags.map(function (t) { return INTEREST_LABEL[t] || t; })).join(" ").toLowerCase();
+    return words.every(function (w) { return hay.indexOf(w) !== -1; });
+  }
+  function clearSearch() {
+    $("search-form").reset();
+    shownCount = PAGE;
+    renderHome();
+    $("search-input").focus();
+  }
+  let searchTimer;
+  $("search-input").addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { shownCount = PAGE; renderHome(); }, 200);
+  });
+  ["kind-filter", "when-filter"].forEach(function (id) {
+    $(id).addEventListener("change", function () { shownCount = PAGE; renderHome(); });
+  });
+  $("search-form").addEventListener("submit", function (e) { e.preventDefault(); renderHome(); });
+
   function renderHome() {
     updateSavedCount();
     $("greeting").textContent = greeting();
-    const chips = $("interest-chips");
-    chips.replaceChildren();
     const completed = profile && profile.completed;
-    if (completed && profile.interests.length) {
-      profile.interests.forEach(function (i) { chips.appendChild(el("span", "chip", INTEREST_LABEL[i])); });
-      $("hero-sub").textContent = "Here’s what’s happening around Salem, picked with you in mind.";
-      $("edit-profile").textContent = "✏️ Update my interests";
-    } else {
-      $("hero-sub").textContent = completed
+    $("hero-sub").textContent = completed && (profile.interests || []).length
+      ? "Here’s what’s happening around Salem, picked with you in mind."
+      : completed
         ? "Here’s what’s happening around Salem."
         : "Here’s what’s happening around Salem. Take our short survey and we’ll put the events you’ll love first.";
-      $("edit-profile").textContent = completed ? "✏️ Update my interests" : "🌱 Personalize my events";
-    }
+    $("edit-profile").hidden = !!completed;
 
-    const matches = allEvents().map(score);
+    const all = allEvents().map(score);
+    const filtering = searchActive();
+    const matches = filtering ? all.filter(matchesSearch) : all;
     const byMatch = matches.slice().sort(function (a, b) { return b.score - a.score || a.date - b.date; });
     const byDate = matches.slice().sort(function (a, b) { return a.date - b.date || b.score - a.score; });
 
     const picks = $("top-picks");
     picks.replaceChildren();
     const picksTitle = picks.previousElementSibling;
-    if (completed) {
+    if (completed && !filtering) {
       picksTitle.hidden = false; picks.hidden = false;
       byMatch.slice(0, 3).forEach(function (m) { picks.appendChild(card(m, true)); });
     } else {
@@ -531,6 +615,19 @@
 
     const mine = matches.filter(function (m) { return rsvps.has(m.ev.id); });
     $("event-count").textContent = "(" + matches.length + (mine.length ? " · " + mine.length + " saved" : "") + ")";
+    $("event-list").previousElementSibling.querySelector(".section-title").firstChild.textContent =
+      filtering ? "Matching events " : "All upcoming events ";
+    const sStatus = $("search-status");
+    sStatus.hidden = !filtering;
+    if (filtering) {
+      sStatus.replaceChildren(el("span", null, matches.length
+        ? "Showing " + matches.length + " of " + all.length + " events. "
+        : "No events match that search. Try fewer words or a different kind of event. "));
+      const clear = el("button", "btn btn-link", "Clear search and show all events");
+      clear.type = "button";
+      clear.addEventListener("click", clearSearch);
+      sStatus.appendChild(clear);
+    }
 
     const list = $("event-list");
     list.replaceChildren();
@@ -609,10 +706,31 @@
     if (readAloud) speak("My saved events. " + savedMatches().length + " saved.");
   }
   function rerender() {
-    if (!$("saved").hidden) renderSaved(); else renderHome();
+    if (!$("saved").hidden) renderSaved();
+    else if (!$("profile").hidden) renderProfile();
+    else renderHome();
     updateSavedCount();
   }
   function pad(n) { return String(n).padStart(2, "0"); }
+  function googleCalendarUrl(ev, d) {
+    const ymd = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+    const start = parseClock(ev.time);
+    let dates;
+    if (start == null) {
+      const next = new Date(d); next.setDate(next.getDate() + 1);
+      dates = ymd + "/" + next.getFullYear() + pad(next.getMonth() + 1) + pad(next.getDate());
+    } else {
+      let end = parseClock((endInfo(ev) || {}).time);
+      if (end == null || end <= start) end = Math.min(start + 90, 23 * 60 + 59);
+      const t = function (mins) { return "T" + pad(Math.floor(mins / 60)) + pad(mins % 60) + "00"; };
+      dates = ymd + t(start) + "/" + ymd + t(end);
+    }
+    const q = new URLSearchParams({
+      action: "TEMPLATE", text: ev.title, dates: dates, ctz: "America/Los_Angeles",
+      location: ev.place || "", details: (ev.desc || "") + (ev.url ? "\n\n" + ev.url : "") + "\n\nFound on Bloom"
+    });
+    return "https://calendar.google.com/calendar/render?" + q.toString();
+  }
   function downloadIcs(ev, d) {
     const m = /^(\d+):(\d+) (AM|PM)$/.exec(ev.time || "");
     const ymd = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
@@ -644,26 +762,29 @@
    * Views
    * ------------------------------------------------------------------ */
   function show(view) {
-    ["survey", "matching", "home", "create", "saved"].forEach(function (v) { $(v).hidden = v !== view; });
+    ["survey", "matching", "home", "create", "saved", "profile"].forEach(function (v) { $(v).hidden = v !== view; });
     window.scrollTo(0, 0);
   }
-  function openSurvey() {
+  let afterSurvey = "home";
+  function openSurvey(returnTo) {
+    afterSurvey = returnTo === "profile" ? "profile" : "home";
     fillForm(profile);
     show("survey");
     showStep(profile && profile.completed ? 1 : 0);
   }
-  $("edit-profile").addEventListener("click", openSurvey);
+  $("edit-profile").addEventListener("click", function () { openSurvey(); });
   $("brand-link").addEventListener("click", function (e) {
     e.preventDefault();
     if (profile) { renderHome(); show("home"); } else openSurvey();
   });
-  $("reset").addEventListener("click", function () {
+  function startOver() {
     try { localStorage.removeItem(KEY); localStorage.removeItem(RSVP_KEY); } catch (e) {}
     profile = null; rsvps = new Set(); sortMode = "match";
     form.reset();
     closeChat();
     openSurvey();
-  });
+  }
+  $("reset").addEventListener("click", startOver);
 
   /* ------------------------------------------------------------------ *
    * Share an event — guided, one question group at a time
@@ -798,6 +919,11 @@
   }
 
   function openCreate() {
+    if (!profile || !profile.name) {
+      pendingCreate = true;
+      openProfile("Add your name first. It appears on events you share, so neighbors know who is hosting.");
+      return;
+    }
     cForm.reset();
     $("ev-cost-other").hidden = true;
     const free = cForm.querySelector('input[name="ev-cost"][value="Free"]');
@@ -848,10 +974,89 @@
   $("c-back").addEventListener("click", function () { showCStep(Math.max(0, cStep - 1)); });
   $("c-cancel").addEventListener("click", function () { renderHome(); show("home"); });
   $("open-create").addEventListener("click", openCreate);
+
+  /* ------------------------------------------------------------------ *
+   * My profile — name, email, preferences, events I've shared
+   * ------------------------------------------------------------------ */
+  let pendingCreate = false;
+  async function syncProfile() {
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: senderId, name: profile.name, email: profile.email || "" })
+      });
+      const body = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(body.error || "Sorry, we couldn’t save that right now.");
+      return "";
+    } catch (e) { return e.message || "Sorry, we couldn’t save that right now."; }
+  }
+  function prefRow(dl, label, value) {
+    dl.append(el("dt", null, label), el("dd", null, value || "Not answered"));
+  }
+  function listText(keys, labels) { return (keys || []).map(function (k) { return labels[k] || k; }).join(", "); }
+  function renderProfile() {
+    const p = profile || {};
+    $("p-name").value = p.name || "";
+    $("p-email").value = p.email || "";
+    $("p-error").textContent = "";
+    const dl = $("prefs-summary");
+    dl.replaceChildren();
+    prefRow(dl, "Interests", listText(p.interests, INTEREST_LABEL));
+    prefRow(dl, "Part of Salem", p.area ? areaText(p.area) : "");
+    prefRow(dl, "Days", listText(p.days, Object.fromEntries(DAYS)));
+    prefRow(dl, "Times", listText(p.times, Object.fromEntries(TIMES)));
+    prefRow(dl, "Group size", listText(p.group ? [p.group] : [], Object.fromEntries(GROUPS)));
+    prefRow(dl, "Important to me", listText(p.needs, NEED_LABEL));
+    $("edit-prefs").textContent = p.completed ? "✏️ Update my preferences" : "🌱 Answer the short survey";
+    const mineEvents = allEvents().filter(function (ev) { return ev.mine; }).map(score)
+      .sort(function (a, b) { return a.date - b.date; });
+    const list = $("my-events");
+    list.replaceChildren();
+    mineEvents.forEach(function (m) { list.appendChild(card(m, false)); });
+    $("my-events-count").textContent = "(" + mineEvents.length + ")";
+    $("my-events-empty").hidden = mineEvents.length > 0;
+  }
+  function openProfile(message) {
+    closeChat(true);
+    renderProfile();
+    $("profile-intro").textContent = typeof message === "string" ? message
+      : "Your name appears on events you share, so neighbors know who is hosting.";
+    $("profile-intro").classList.toggle("intro-alert", typeof message === "string");
+    show("profile");
+    if (typeof message === "string") $("p-name").focus(); else $("profile-title").focus();
+  }
+  $("profile-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const name = $("p-name").value.trim();
+    const email = $("p-email").value.trim();
+    if (!name) { $("p-error").textContent = "Please enter your name."; $("p-name").focus(); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      $("p-error").textContent = "That email doesn’t look quite right. Please check it."; $("p-email").focus(); return;
+    }
+    profile = Object.assign({ completed: false, interests: [] }, profile || {}, { name: name, email: email });
+    save(KEY, profile);
+    $("p-save").disabled = true;
+    const problem = await syncProfile();
+    $("p-save").disabled = false;
+    if (problem) { $("p-error").textContent = problem; return; }
+    await loadCommunityEvents();
+    if (pendingCreate) { pendingCreate = false; toast("Profile saved. Now tell us about your event."); openCreate(); return; }
+    renderProfile();
+    toast("Your profile is saved.");
+  });
+  $("open-profile").addEventListener("click", function () { pendingCreate = false; openProfile(); });
+  $("profile-back").addEventListener("click", function () { pendingCreate = false; renderHome(); show("home"); });
+  $("edit-prefs").addEventListener("click", function () { openSurvey("profile"); });
+  $("profile-saved").addEventListener("click", openSaved);
+  $("profile-share").addEventListener("click", openCreate);
+  $("profile-reset").addEventListener("click", function () {
+    if (window.confirm("Clear your name, answers and saved events on this device?")) startOver();
+  });
   $("open-saved").addEventListener("click", openSaved);
   $("saved-back").addEventListener("click", function () { renderHome(); show("home"); });
   $("saved-browse").addEventListener("click", function () { renderHome(); show("home"); });
   if (location.hash === "#saved") { setTimeout(openSaved, 0); }
+  if (location.hash === "#profile") { setTimeout(openProfile, 0); }
 
   /* ------------------------------------------------------------------ *
    * Display settings
@@ -895,7 +1100,7 @@
   function offlineReply() {
     addMessage("I’m having trouble thinking right now, sorry about that! In the meantime, your personalized events are right on the home page, best matches first.", "assistant");
     quickReplies.replaceChildren();
-    const b = el("button", "btn btn-secondary", "Show my events");
+    const b = el("button", "btn btn-secondary btn-chip", "Show my events");
     b.type = "button";
     b.addEventListener("click", function () { closeChat(); });
     quickReplies.appendChild(b);
@@ -920,7 +1125,7 @@
         loadCommunityEvents().then(function () { renderHome(); toast("Your event is now on the Bloom board 🌸"); });
       }
       (r.buttons || []).forEach(function (btn) {
-        const q = el("button", "btn btn-secondary", btn.title);
+        const q = el("button", "btn btn-secondary btn-chip", btn.title);
         q.type = "button";
         q.addEventListener("click", function () { sendMessage(btn.payload, false); });
         quickReplies.appendChild(q);
@@ -959,17 +1164,14 @@
     $("chat").hidden = false;
     document.body.classList.add("chat-open");
     if (!messages.children.length) {
-      addMessage("Hi" + (profile && profile.name ? " " + profile.name : "") + "! I’m Bloom. Here’s what I can do for you:\n" +
-        "• Find events happening this week\n" +
-        "• Search by type, like music or exercise\n" +
-        "• Post your own event for neighbors\n" +
-        "Tap a button below, or type your question.", "assistant");
+      addMessage("Hi" + (profile && profile.name ? " " + profile.name : "") + "! I’m Bloom. I can find events this week, " +
+        "search by type (like music or exercise), or help you post your own event. Tap a button or type a question.", "assistant");
       quickReplies.replaceChildren();
       [["📅 Events this week", "What events are happening this week?"],
        ["🎵 Music events", "Find music events"],
        ["🧘 Exercise classes", "Find exercise classes"],
        ["➕ Post an event", "I want to post an event"]].forEach(function (q) {
-        const b = el("button", "btn btn-secondary", q[0]);
+        const b = el("button", "btn btn-secondary btn-chip", q[0]);
         b.type = "button";
         b.addEventListener("click", function () { sendMessage(q[1], true); });
         quickReplies.appendChild(b);
@@ -983,6 +1185,12 @@
     if (keepFocus !== true) $("open-chat").focus();
   }
   $("open-chat").addEventListener("click", openChat);
+  $("expand-chat").addEventListener("click", function (e) {
+    const wide = $("chat").classList.toggle("chat-wide");
+    e.currentTarget.setAttribute("aria-pressed", String(wide));
+    e.currentTarget.textContent = wide ? "⤡ Smaller" : "⤢ Full screen";
+    messages.scrollTop = messages.scrollHeight;
+  });
   $("close-chat").addEventListener("click", function () { closeChat(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("chat").hidden) closeChat(); });
   $("chat-form").addEventListener("submit", function (e) { e.preventDefault(); sendMessage(input.value, true); });
@@ -1010,9 +1218,10 @@
    * ------------------------------------------------------------------ */
   if (location.hash === "#share") { openCreate(); }
   else if (profile) { renderHome(); show("home"); } else { openSurvey(); }
-  loadCommunityEvents().then(function () { if (!$("home").hidden || !$("saved").hidden) rerender(); });
+  loadCommunityEvents().then(function () { if (!$("home").hidden || !$("saved").hidden || !$("profile").hidden) rerender(); });
+  if (profile && profile.name) syncProfile();  // keep the server's name in step with this device
   async function refreshBoard() {
-    if (($("home").hidden && $("saved").hidden) || document.hidden) return;
+    if (($("home").hidden && $("saved").hidden && $("profile").hidden) || document.hidden) return;
     if (await loadCommunityEvents()) rerender();
   }
   setInterval(refreshBoard, 60000);

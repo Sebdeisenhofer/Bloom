@@ -2,14 +2,19 @@
 
 ## Components
 
+![Bloom architecture](architecture.png)
+
 ```mermaid
 flowchart LR
-    Person[Older adult using browser] -->|Local REST| Nginx[Nginx static site and proxy]
+    Person[Visitor's browser] -->|HTTPS| Caddy[Caddy HTTPS proxy]
+    Caddy --> Nginx[nginx: web app + routing]
     Nginx -->|/webhooks/rest/webhook| Rasa[Rasa Pro CALM 3.21.3]
-    Rasa -->|Command generation| LLM[Rasa tutorial command generator]
-    Rasa -->|custom actions| Actions[Python Rasa action server]
-    Actions -->|profiles, events, RSVPs| SQLite[(SQLite in named Docker volume)]
-    Nginx -->|HTML, CSS, JS| Person
+    Nginx -->|/api| EventsAPI[Events API: board, profiles, reports]
+    Rasa -->|command generation| LLM[Rasa-hosted LLM]
+    Rasa -->|custom actions| Actions[Python action server]
+    Actions --> SQLite[(SQLite, shared Docker volume)]
+    EventsAPI --> SQLite
+    Feeds[Library, Willamette athletics, Heritage Center feeds] -->|every 3 h, adult filter| EventsAPI
 ```
 
 ## Event search sequence
