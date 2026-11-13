@@ -294,7 +294,9 @@ body.high-contrast .count-pill { background: #000; }
 
 /* ---------- compact buttons, chat full screen ---------- */
 .btn-small { min-height: 44px; padding: .35rem .9rem; font-size: .92rem; }
-.btn-chip { min-height: 44px; padding: .3rem .9rem; font-size: .92rem; font-weight: 600; }
+.btn-chip { min-height: 44px; padding: .3rem .9rem; font-size: .92rem; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-chip-event { border-radius: 12px; text-align: left; flex: 1 1 100%; border-width: 1.5px; }
+.quick-replies { max-height: min(30vh, 220px); }
 .chat.chat-wide { left: 1rem; right: 1rem; width: auto; max-width: 960px; margin: 0 auto; box-shadow: 0 0 0 100vmax #1f2a2773, 0 20px 60px #1f2a2733; }
 .chat.chat-wide .message { max-width: 75%; }
 @media (max-width: 640px) { #expand-chat { display: none; } }

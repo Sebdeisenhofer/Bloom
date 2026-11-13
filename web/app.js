@@ -1125,7 +1125,12 @@
         loadCommunityEvents().then(function () { renderHome(); toast("Your event is now on the Bloom board 🌸"); });
       }
       (r.buttons || []).forEach(function (btn) {
-        const q = el("button", "btn btn-secondary btn-chip", btn.title);
+        // Rasa sends "Tell me about <long event name>": show a short one-line chip, full text on hover / for screen readers.
+        const about = /^tell me about\s+/i.test(btn.title);
+        const label = about ? "ℹ️ " + btn.title.replace(/^tell me about\s+/i, "") : btn.title;
+        const q = el("button", "btn btn-secondary btn-chip" + (about ? " btn-chip-event" : ""), label);
+        q.title = btn.title;
+        q.setAttribute("aria-label", btn.title);
         q.type = "button";
         q.addEventListener("click", function () { sendMessage(btn.payload, false); });
         quickReplies.appendChild(q);
