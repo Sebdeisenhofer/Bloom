@@ -172,6 +172,17 @@ class EventPostingTests(unittest.TestCase):
         self.assertIn("haven’t posted", dispatcher.messages[0]["text"])
         self.assertNotIn("Puzzle Afternoon", [e["title"] for e in actions.rank_events({}, "")])
 
+    def test_website_guest_cannot_post_from_chat(self):
+        dispatcher = FakeDispatcher()
+        actions.ActionSaveEvent().run(dispatcher, EventTracker(self.slots(), sender_id="bloom-guest-123"), {})
+        self.assertIn("create a free Bloom account", dispatcher.messages[0]["text"])
+        self.assertNotIn("Puzzle Afternoon", [e["title"] for e in actions.rank_events({}, "")])
+
+    def test_signed_in_account_can_post_from_chat(self):
+        dispatcher = FakeDispatcher()
+        actions.ActionSaveEvent().run(dispatcher, EventTracker(self.slots(), sender_id="acct-abc"), {})
+        self.assertIn("Puzzle Afternoon", [e["title"] for e in actions.rank_events({}, "")])
+
     def test_failed_save_never_claims_success(self):
         original = actions.connect
         def broken():

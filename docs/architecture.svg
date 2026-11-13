@@ -23,7 +23,7 @@
   <rect x="40" y="140" width="310" height="580" rx="22" class="box"/>
   <text x="62" y="180" class="h">🧑‍🦳 Visitor’s browser</text>
   <text x="62" y="208" class="s">Bloom web app (HTML, CSS, JavaScript)</text>
-  <text x="62" y="250" class="t">• First-visit interest survey</text>
+  <text x="62" y="250" class="t">• Welcome: account or guest</text>
   <text x="62" y="280" class="t">• Events board ranked by match</text>
   <text x="62" y="310" class="t">  (nothing is hidden)</text>
   <text x="62" y="340" class="t">• Search by words, kind, day</text>
@@ -36,8 +36,8 @@
   <text x="62" y="570" class="t">• Read aloud (with Stop)</text>
   <text x="62" y="600" class="t">• Voice input in chat</text>
   <text x="62" y="630" class="t">• Large touch targets</text>
-  <text x="62" y="680" class="s">Saved events stay on the device;</text>
-  <text x="62" y="700" class="s">your name shows on events you post.</text>
+  <text x="62" y="680" class="s">Guests: answers stay on device.</text>
+  <text x="62" y="700" class="s">Accounts: synced on the server.</text>
 
   <!-- Server frame -->
   <rect x="400" y="120" width="810" height="740" rx="26" fill="#e6efe9" stroke="#2f5d50" stroke-width="2" stroke-dasharray="10 7"/>
@@ -59,7 +59,7 @@
   <rect x="430" y="500" width="320" height="165" rx="18" class="box"/>
   <text x="452" y="535" class="h">📅 Events API (Python)</text>
   <text x="452" y="563" class="t">• Events board, post, remove</text>
-  <text x="452" y="588" class="t">• Profiles and event reports</text>
+  <text x="452" y="588" class="t">• Accounts (hashed passwords), reports</text>
   <text x="452" y="613" class="t">• Imports real events every 3 h,</text>
   <text x="452" y="638" class="t">  filters out kids/teen programs</text>
 
@@ -80,7 +80,7 @@
   <!-- SQLite -->
   <rect x="860" y="580" width="320" height="140" rx="18" class="db"/>
   <text x="882" y="615" class="h">🗄️ SQLite database</text>
-  <text x="882" y="643" class="t">Events, profiles, members,</text>
+  <text x="882" y="643" class="t">Events, accounts, sessions,</text>
   <text x="882" y="666" class="t">RSVPs, reports</text>
   <text x="882" y="696" class="s">Shared Docker volume (persists)</text>
 

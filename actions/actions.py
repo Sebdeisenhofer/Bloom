@@ -509,6 +509,11 @@ class ActionSaveProfile(Action):
         return [SlotSet(key, value) for key, value in values.items()] + [SlotSet("profile_exists", True)]
 
 
+def is_web_guest(sender_id: str | None) -> bool:
+    """The website gives guests ids starting with "bloom-"; signed-in accounts use "acct-"."""
+    return str(sender_id or "").startswith("bloom-")
+
+
 class ActionSaveEvent(Action):
     def name(self) -> str:
         return "action_save_event"
@@ -524,6 +529,11 @@ class ActionSaveEvent(Action):
         # this check is a second safety net so nothing is posted without a clear yes.
         if parse_yes_no(tracker.get_slot("event_confirmation")) is not True:
             dispatcher.utter_message(text="No problem. I haven’t posted the event.")
+            return []
+        # Website guests (sender ids "bloom-…") must create an account before sharing events.
+        if is_web_guest(tracker.sender_id):
+            dispatcher.utter_message(text="To share an event, please create a free Bloom account first, so neighbors know who is hosting. "
+                                          "Tap “My profile”, then “Create an account”. I haven’t posted anything.")
             return []
         fields = [tracker.get_slot(key) for key in (
             "event_title", "event_date", "event_time", "event_location", "event_host",

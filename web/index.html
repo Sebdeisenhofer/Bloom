@@ -26,10 +26,82 @@
       <button id="large-text" class="pill" type="button" aria-pressed="false">A+ Larger text</button>
       <button id="contrast" class="pill" type="button" aria-pressed="false">High contrast</button>
       <button id="read-aloud" class="pill" type="button" aria-pressed="false">🔊 Read aloud: off</button>
+      <button id="account-btn" class="pill pill-account" type="button">👤 Log in</button>
+      <button id="logout-btn" class="pill" type="button" hidden>Log out</button>
     </div>
   </header>
 
   <main id="main" tabindex="-1">
+    <!-- ============ WELCOME (first arrival) ============ -->
+    <section id="welcome" class="welcome" hidden aria-labelledby="welcome-title">
+      <div class="welcome-hero">
+        <div class="welcome-copy">
+          <p class="eyebrow">For neighbors 60+ in Salem, Oregon</p>
+          <h1 id="welcome-title" class="welcome-title" tabindex="-1">Find your people in Salem <span aria-hidden="true">🌸</span></h1>
+          <p class="welcome-lead">Bloom finds friendly local events that fit what you enjoy, like book clubs, garden groups, concerts and college games, and helps you share your own.</p>
+          <div class="welcome-actions">
+            <button type="button" id="w-register" class="btn btn-primary btn-big">Create a free account</button>
+            <button type="button" id="w-login" class="btn btn-secondary btn-big">Log in</button>
+          </div>
+          <button type="button" id="w-guest" class="btn btn-link w-guest">Continue as a guest →</button>
+          <p class="help-text welcome-note">Guests can browse, search, save events and chat with Bloom. An account keeps your answers on any device and lets you share events with neighbors.</p>
+        </div>
+        <div class="welcome-preview">
+          <p class="preview-label">Coming up in Salem</p>
+          <ul id="welcome-events" class="preview-list"></ul>
+          <p class="preview-foot">Real listings, updated automatically</p>
+        </div>
+      </div>
+
+      <div class="welcome-features">
+        <article class="feature">
+          <span class="feature-icon" aria-hidden="true">🎯</span>
+          <h2>Picked for you</h2>
+          <p>Answer a few friendly questions and your best matches come first, with a plain reason why. Nothing is ever hidden.</p>
+        </article>
+        <article class="feature">
+          <span class="feature-icon" aria-hidden="true">💬</span>
+          <h2>Just ask Bloom</h2>
+          <p>Type or speak, like “What’s on this week?” or “Find music events”, and Bloom answers in plain words.</p>
+        </article>
+        <article class="feature">
+          <span class="feature-icon" aria-hidden="true">🏡</span>
+          <h2>Share with neighbors</h2>
+          <p>Hosting a coffee chat or a garden day? Post it in a few easy steps so neighbors can join you.</p>
+        </article>
+      </div>
+      <p class="welcome-trust">📚 Salem Public Library · 🏀 Willamette University · 🏛 Willamette Heritage Center<br>
+        Larger text, high contrast and read aloud are built in. Try the buttons at the top.</p>
+    </section>
+
+    <!-- ============ LOG IN / CREATE ACCOUNT ============ -->
+    <section id="auth" class="survey" hidden>
+      <div class="survey-card auth-card">
+        <button type="button" id="auth-back" class="btn btn-ghost btn-small">← Back</button>
+        <h1 id="auth-title" class="step-title" tabindex="-1">Create your account</h1>
+        <p id="auth-lead" class="lead">Pick a username and password. Next, a few friendly questions so we can suggest events.</p>
+        <form id="auth-form" novalidate>
+          <label class="field-label" for="a-username">Username</label>
+          <input id="a-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="For example: margaret_h">
+          <p id="a-username-help" class="help-text">3 to 30 letters or numbers, no spaces.</p>
+          <label class="field-label" for="a-password">Password</label>
+          <input id="a-password" type="password" autocomplete="new-password" maxlength="200">
+          <p id="a-password-help" class="help-text">At least 6 characters.</p>
+          <div id="a-confirm-wrap">
+            <label class="field-label" for="a-confirm">Type the password again</label>
+            <input id="a-confirm" type="password" autocomplete="new-password" maxlength="200">
+          </div>
+          <label class="show-pw"><input type="checkbox" id="a-show"> Show password</label>
+          <p id="a-error" class="form-error" role="alert"></p>
+          <button type="submit" id="a-submit" class="btn btn-primary btn-wide">Create my account →</button>
+        </form>
+        <div class="auth-switch">
+          <p><span id="auth-switch-text">Already have an account?</span> <button type="button" id="auth-switch" class="btn btn-link">Log in instead</button></p>
+          <p><button type="button" id="auth-guest" class="btn btn-link">Continue as a guest</button></p>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ SURVEY ============ -->
     <section id="survey" class="survey" hidden>
       <div class="survey-card">
@@ -174,6 +246,7 @@
       <button type="button" id="profile-back" class="btn btn-ghost">← Back to all events</button>
       <h1 id="profile-title" class="saved-title" tabindex="-1">👤 My profile</h1>
       <p id="profile-intro" class="lead">Your name appears on events you share, so neighbors know who is hosting.</p>
+      <div id="account-box" class="account-box"></div>
 
       <div class="profile-grid">
         <form id="profile-form" class="panel" novalidate>
@@ -202,6 +275,7 @@
       <div class="profile-footer">
         <button type="button" id="profile-saved" class="btn btn-secondary">⭐ My saved events</button>
         <button type="button" id="profile-reset" class="btn btn-link">Start over (clear my answers on this device)</button>
+        <button type="button" id="profile-logout" class="btn btn-secondary" hidden>Log out</button>
       </div>
     </section>
 

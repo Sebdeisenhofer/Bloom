@@ -80,18 +80,24 @@
   function save(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* private mode: in-memory only */ }
   }
-  if (new URLSearchParams(location.search).has("reset")) {
-    try { localStorage.removeItem(KEY); localStorage.removeItem(RSVP_KEY); } catch (e) {}
+  const SESSION_KEY = "bloom-session-v1";   // { token, user: { id, username } } for signed-in accounts
+  const GUEST_KEY = "bloom-guest-v1";       // true once someone chose "Continue as a guest"
+  const params = new URLSearchParams(location.search);
+  if (params.has("reset")) {
+    try { [KEY, RSVP_KEY, SESSION_KEY, GUEST_KEY].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
   }
 
-  // ?demo jumps straight to a filled-in sample profile (handy for presentations).
-  if (new URLSearchParams(location.search).has("demo")) {
-    save(KEY, {
-      name: "Margaret", interests: ["gardening", "books", "fitness", "social"], area: "south", distance: "town",
-      transport: ["bus"], days: ["Tue", "Wed", "Thu"], times: ["morning", "afternoon"], group: "small",
-      needs: ["seating", "free"], notes: "", completed: true
-    });
-  }
+  let session = load(SESSION_KEY, null);
+  // Guests get a random id (used for the chat and for reports); accounts use their "acct-…" id.
+  let guestId;
+  try {
+    guestId = localStorage.getItem("bloom-user-id");
+    if (!guestId) {
+      guestId = "bloom-" + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).slice(2));
+      localStorage.setItem("bloom-user-id", guestId);
+    }
+  } catch (e) { guestId = "bloom-session-" + Date.now(); }
+  let senderId = session ? session.user.id : guestId;
 
   let profile = load(KEY, null);
   let rsvps = new Set(load(RSVP_KEY, []));
@@ -318,8 +324,8 @@
   function finishSurvey(p) {
     p.email = (profile && profile.email) || "";
     profile = p;
-    save(KEY, profile);
-    if (profile.name) syncProfile();
+    persistProfile();
+    if (pendingCreate && session) { pendingCreate = false; renderHome(); openCreate(); return; }
     if (afterSurvey === "profile") { afterSurvey = "home"; openProfile(); toast("Your preferences are updated."); return; }
     show("matching");
     setTimeout(function () { renderHome(); show("home"); }, p.completed ? 1100 : 200);
@@ -451,7 +457,7 @@
     rsvp.setAttribute("aria-pressed", String(going));
     rsvp.addEventListener("click", function () {
       if (rsvps.has(ev.id)) rsvps.delete(ev.id); else rsvps.add(ev.id);
-      save(RSVP_KEY, Array.from(rsvps));
+      persistSaved();
       rerender();
       if (rsvps.has(ev.id)) toast("⭐ Saved “" + ev.title + "” to My saved events.", "View my events", openSaved);
       else toast("Removed from My saved events.");
@@ -508,7 +514,7 @@
       remove.addEventListener("click", async function () {
         if (!window.confirm("Remove “" + ev.title + "” from Bloom? Neighbors won’t see it anymore.")) return;
         try {
-          const res = await fetch("/api/events/" + ev.apiId + "?user=" + encodeURIComponent(senderId), { method: "DELETE" });
+          const res = await fetch("/api/events/" + ev.apiId, { method: "DELETE", headers: authHeaders() });
           if (!res.ok) throw new Error(String(res.status));
           await loadCommunityEvents();
           renderHome();
@@ -537,7 +543,8 @@
   function greeting() {
     const h = new Date().getHours();
     const part = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
-    return part + (profile && profile.name ? ", " + profile.name : "") + " 🌸";
+    const name = (profile && profile.name) || (session && session.user.username) || "";
+    return part + (name ? ", " + name : "") + " 🌸";
   }
 
   /* ------------------------------------------------------------------ *
@@ -706,7 +713,8 @@
     if (readAloud) speak("My saved events. " + savedMatches().length + " saved.");
   }
   function rerender() {
-    if (!$("saved").hidden) renderSaved();
+    if (!$("welcome").hidden) renderWelcome();
+    else if (!$("saved").hidden) renderSaved();
     else if (!$("profile").hidden) renderProfile();
     else renderHome();
     updateSavedCount();
@@ -762,7 +770,7 @@
    * Views
    * ------------------------------------------------------------------ */
   function show(view) {
-    ["survey", "matching", "home", "create", "saved", "profile"].forEach(function (v) { $(v).hidden = v !== view; });
+    ["welcome", "auth", "survey", "matching", "home", "create", "saved", "profile"].forEach(function (v) { $(v).hidden = v !== view; });
     window.scrollTo(0, 0);
   }
   let afterSurvey = "home";
@@ -775,14 +783,16 @@
   $("edit-profile").addEventListener("click", function () { openSurvey(); });
   $("brand-link").addEventListener("click", function (e) {
     e.preventDefault();
-    if (profile) { renderHome(); show("home"); } else openSurvey();
+    if (!session && !load(GUEST_KEY, false)) showWelcome();
+    else if (profile) { renderHome(); show("home"); } else openSurvey();
   });
   function startOver() {
-    try { localStorage.removeItem(KEY); localStorage.removeItem(RSVP_KEY); } catch (e) {}
+    if (session) { logout(); return; }
+    try { [KEY, RSVP_KEY, GUEST_KEY].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
     profile = null; rsvps = new Set(); sortMode = "match";
     form.reset();
-    closeChat();
-    openSurvey();
+    closeChat(true);
+    showWelcome();
   }
   $("reset").addEventListener("click", startOver);
 
@@ -862,7 +872,7 @@
       group: cValues("ev-group")[0] || "small",
       cost: cost,
       needs: needs,
-      host: $("ev-host").value.trim() || (profile && profile.name) || "",
+      host: $("ev-host").value.trim() || (profile && profile.name) || (session && session.user.username) || "",
       user: senderId
     };
   }
@@ -919,9 +929,9 @@
   }
 
   function openCreate() {
-    if (!profile || !profile.name) {
+    if (!session) {
       pendingCreate = true;
-      openProfile("Add your name first. It appears on events you share, so neighbors know who is hosting.");
+      openAuth("register", "Create a free account to share events, so neighbors know who is hosting. Already have one? Tap “Log in instead” below.");
       return;
     }
     cForm.reset();
@@ -930,7 +940,7 @@
     if (free) free.checked = true;
     const small = cForm.querySelector('input[name="ev-group"][value="small"]');
     if (small) small.checked = true;
-    if (profile && profile.name) $("ev-host").value = profile.name;
+    $("ev-host").value = (profile && profile.name) || session.user.username;
     quickDates();
     closeChat(true);
     show("create");
@@ -944,10 +954,16 @@
     try {
       const res = await fetch("/api/events", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(draft())
       });
       const body = await res.json().catch(function () { return {}; });
+      if (res.status === 401) {
+        endSession();
+        pendingCreate = true;
+        openAuth("login", "Please log in again to share your event.");
+        return;
+      }
       if (!res.ok) throw new Error(body.error || "Sorry, we couldn’t post that right now.");
       await loadCommunityEvents();
       showCStep(C_DONE);
@@ -979,23 +995,32 @@
    * My profile — name, email, preferences, events I've shared
    * ------------------------------------------------------------------ */
   let pendingCreate = false;
-  async function syncProfile() {
-    try {
-      const res = await fetch("/api/profile", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: senderId, name: profile.name, email: profile.email || "" })
-      });
-      const body = await res.json().catch(function () { return {}; });
-      if (!res.ok) throw new Error(body.error || "Sorry, we couldn’t save that right now.");
-      return "";
-    } catch (e) { return e.message || "Sorry, we couldn’t save that right now."; }
-  }
   function prefRow(dl, label, value) {
     dl.append(el("dt", null, label), el("dd", null, value || "Not answered"));
   }
   function listText(keys, labels) { return (keys || []).map(function (k) { return labels[k] || k; }).join(", "); }
   function renderProfile() {
     const p = profile || {};
+    const box = $("account-box");
+    box.replaceChildren();
+    box.classList.toggle("guest", !session);
+    $("profile-form").hidden = !session;
+    $("profile-logout").hidden = !session;
+    if (session) {
+      box.appendChild(el("p", null, "✅ Signed in as " + session.user.username + ". Your answers and saved events follow you to any device."));
+    } else {
+      box.appendChild(el("p", "account-box-title", "You’re browsing as a guest"));
+      box.appendChild(el("p", null, "Your answers are saved on this device only. Create a free account to keep them on any device and to share events with neighbors."));
+      const row = el("div", "account-box-actions");
+      const reg = el("button", "btn btn-primary", "Create a free account");
+      reg.type = "button";
+      reg.addEventListener("click", function () { openAuth("register"); });
+      const login = el("button", "btn btn-secondary", "Log in");
+      login.type = "button";
+      login.addEventListener("click", function () { openAuth("login"); });
+      row.append(reg, login);
+      box.appendChild(row);
+    }
     $("p-name").value = p.name || "";
     $("p-email").value = p.email || "";
     $("p-error").textContent = "";
@@ -1036,11 +1061,10 @@
     profile = Object.assign({ completed: false, interests: [] }, profile || {}, { name: name, email: email });
     save(KEY, profile);
     $("p-save").disabled = true;
-    const problem = await syncProfile();
+    const problem = await pushAccount();
     $("p-save").disabled = false;
     if (problem) { $("p-error").textContent = problem; return; }
     await loadCommunityEvents();
-    if (pendingCreate) { pendingCreate = false; toast("Profile saved. Now tell us about your event."); openCreate(); return; }
     renderProfile();
     toast("Your profile is saved.");
   });
@@ -1050,13 +1074,205 @@
   $("profile-saved").addEventListener("click", openSaved);
   $("profile-share").addEventListener("click", openCreate);
   $("profile-reset").addEventListener("click", function () {
-    if (window.confirm("Clear your name, answers and saved events on this device?")) startOver();
+    if (window.confirm(session ? "Log out and clear your answers from this device? Your account keeps them." : "Clear your name, answers and saved events on this device?")) startOver();
   });
+  $("profile-logout").addEventListener("click", logout);
+
+  /* ------------------------------------------------------------------ *
+   * Accounts — welcome page, create account, log in, guest mode
+   * Signed-in profiles and saved events live on the server (PUT /api/me).
+   * ------------------------------------------------------------------ */
+  function authHeaders(extra) {
+    const h = Object.assign({}, extra || {});
+    if (session) h.Authorization = "Bearer " + session.token;
+    return h;
+  }
+  function persistProfile() { save(KEY, profile); queueSync(); }
+  function persistSaved() { save(RSVP_KEY, Array.from(rsvps)); queueSync(); }
+  let syncTimer;
+  function queueSync() {
+    if (!session) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(pushAccount, 400);
+  }
+  async function pushAccount() {
+    if (!session) return "";
+    try {
+      const res = await fetch("/api/me", {
+        method: "PUT", headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ profile: profile || {}, saved: Array.from(rsvps) })
+      });
+      if (res.status === 401) { endSession(); return "Your session ended. Please log in again."; }
+      if (!res.ok) throw new Error(String(res.status));
+      return "";
+    } catch (e) { return "Sorry, we couldn’t save that to your account right now. Please try again."; }
+  }
+  function setSender(id) {
+    if (id === senderId) return;
+    senderId = id;
+    $("messages").replaceChildren();       // a new person: start a fresh chat
+    $("quick-replies").replaceChildren();
+  }
+  function setSession(data) {
+    session = { token: data.token, user: { id: data.user.id, username: data.user.username } };
+    save(SESSION_KEY, session);
+    try { localStorage.removeItem(GUEST_KEY); } catch (e) {}
+    setSender(session.user.id);
+    updateAccountUI();
+  }
+  function endSession() {
+    session = null;
+    try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+    setSender(guestId);
+    updateAccountUI();
+  }
+  // The server copy wins when it has something; otherwise keep this device's answers and upload them.
+  function applyAccount(user) {
+    const serverProfile = user.profile || {};
+    if (serverProfile.completed || serverProfile.name) profile = serverProfile;
+    const serverSaved = user.saved || [];
+    if (serverSaved.length) rsvps = new Set(serverSaved);
+    save(KEY, profile);
+    save(RSVP_KEY, Array.from(rsvps));
+    if (!serverSaved.length && rsvps.size || !(serverProfile.completed || serverProfile.name) && profile) queueSync();
+  }
+  function updateAccountUI() {
+    const btn = $("account-btn");
+    btn.textContent = session ? "👤 " + session.user.username : "👤 Log in";
+    btn.setAttribute("aria-label", session ? "My profile, signed in as " + session.user.username : "Log in or create an account");
+    $("logout-btn").hidden = !session;
+  }
+  async function logout() {
+    if (session) {
+      try { await fetch("/api/logout", { method: "POST", headers: authHeaders() }); } catch (e) {}
+    }
+    endSession();
+    profile = null; rsvps = new Set(); sortMode = "match";
+    try { [KEY, RSVP_KEY, GUEST_KEY].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+    form.reset();
+    closeChat(true);
+    showWelcome();
+    toast("You’re logged out. See you soon! 🌸");
+  }
+
+  let authMode = "register";
+  function openAuth(mode, message) {
+    authMode = mode;
+    const reg = mode === "register";
+    closeChat(true);
+    $("auth-title").textContent = reg ? "Create your account" : "Welcome back";
+    $("auth-lead").textContent = message || (reg
+      ? "Pick a username and password. Next, a few friendly questions so we can suggest events."
+      : "Log in with your username and password.");
+    $("auth-lead").classList.toggle("intro-alert", !!message);
+    $("a-confirm-wrap").hidden = !reg;
+    $("a-username-help").hidden = !reg;
+    $("a-password-help").hidden = !reg;
+    $("a-password").setAttribute("autocomplete", reg ? "new-password" : "current-password");
+    $("a-submit").textContent = reg ? "Create my account →" : "Log in →";
+    $("auth-switch-text").textContent = reg ? "Already have an account?" : "New to Bloom?";
+    $("auth-switch").textContent = reg ? "Log in instead" : "Create an account";
+    $("a-error").textContent = "";
+    $("a-password").value = "";
+    $("a-confirm").value = "";
+    show("auth");
+    $("auth-title").focus();
+    if (readAloud) speak($("auth-title").textContent + ". " + $("auth-lead").textContent);
+  }
+  $("a-show").addEventListener("change", function (e) {
+    ["a-password", "a-confirm"].forEach(function (id) { $(id).type = e.target.checked ? "text" : "password"; });
+  });
+  $("auth-form").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const reg = authMode === "register";
+    const username = $("a-username").value.trim();
+    const password = $("a-password").value;
+    function fail(msg, field) {
+      $("a-error").textContent = msg;
+      if (field) $(field).focus();
+      if (readAloud) speak(msg);
+    }
+    if (!username) return fail("Please enter a username.", "a-username");
+    if (reg && !/^[A-Za-z0-9_.-]{3,30}$/.test(username)) return fail("Usernames need 3 to 30 letters or numbers, with no spaces. For example: margaret_h", "a-username");
+    if (!password) return fail("Please enter your password.", "a-password");
+    if (reg && password.length < 6) return fail("Please choose a password with at least 6 characters.", "a-password");
+    if (reg && password !== $("a-confirm").value) return fail("The two passwords don’t match. Please type them again.", "a-confirm");
+    $("a-submit").disabled = true;
+    try {
+      const body = { username: username, password: password };
+      if (reg) { body.profile = profile || {}; body.saved = Array.from(rsvps); }
+      const res = await fetch(reg ? "/api/register" : "/api/login", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.error || "Sorry, something went wrong. Please try again.");
+      setSession(data);
+      applyAccount(data.user);
+      $("auth-form").reset();
+      await loadCommunityEvents();
+      afterSignIn(reg);
+    } catch (err) {
+      fail(err.message && err.message.length < 160 ? err.message : "Sorry, we couldn’t reach Bloom right now. Please try again.");
+    } finally {
+      $("a-submit").disabled = false;
+    }
+  });
+  function afterSignIn(isNew) {
+    const name = (profile && profile.name) || session.user.username;
+    toast(isNew ? "Welcome to Bloom, " + name + "! 🌸" : "Welcome back, " + name + "! 🌸");
+    if (!profile || !profile.completed) { openSurvey(); return; }
+    if (pendingCreate) { pendingCreate = false; renderHome(); openCreate(); return; }
+    renderHome();
+    show("home");
+  }
+  $("auth-switch").addEventListener("click", function () {
+    openAuth(authMode === "register" ? "login" : "register", pendingCreate ? $("auth-lead").textContent : "");
+  });
+  function continueAsGuest() {
+    pendingCreate = false;
+    save(GUEST_KEY, true);
+    if (profile) { renderHome(); show("home"); } else openSurvey();
+  }
+  $("auth-guest").addEventListener("click", continueAsGuest);
+  $("w-guest").addEventListener("click", continueAsGuest);
+  $("w-register").addEventListener("click", function () { openAuth("register"); });
+  $("w-login").addEventListener("click", function () { openAuth("login"); });
+  $("auth-back").addEventListener("click", function () {
+    pendingCreate = false;
+    if (session || load(GUEST_KEY, false)) { if (profile) { renderHome(); show("home"); } else openSurvey(); }
+    else showWelcome();
+  });
+  $("account-btn").addEventListener("click", function () { if (session) openProfile(); else openAuth("login"); });
+  $("logout-btn").addEventListener("click", logout);
+
+  function renderWelcome() {
+    const list = $("welcome-events");
+    list.replaceChildren();
+    // Soonest events, one per source first so the preview shows the variety.
+    const upcoming = allEvents().map(function (ev) { return { ev: ev, d: eventDate(ev) }; })
+      .sort(function (a, b) { return a.d - b.d; });
+    const picked = [];
+    const seen = {};
+    upcoming.forEach(function (x) { if (!seen[x.ev.source] && picked.length < 4) { seen[x.ev.source] = true; picked.push(x); } });
+    upcoming.forEach(function (x) { if (picked.length < 4 && picked.indexOf(x) < 0) picked.push(x); });
+    picked.sort(function (a, b) { return a.d - b.d; }).forEach(function (x) {
+      const li = el("li", "preview-item");
+      li.appendChild(dateBlock(x.d));
+      const t = el("div", "preview-text");
+      t.appendChild(el("strong", null, x.ev.title));
+      t.appendChild(el("span", null, timeRange(x.ev) + " · " + (x.ev.place || "Salem")));
+      li.appendChild(t);
+      list.appendChild(li);
+    });
+    $("welcome-events").parentElement.hidden = !picked.length;
+  }
+  function showWelcome() {
+    renderWelcome();
+    show("welcome");
+  }
   $("open-saved").addEventListener("click", openSaved);
   $("saved-back").addEventListener("click", function () { renderHome(); show("home"); });
   $("saved-browse").addEventListener("click", function () { renderHome(); show("home"); });
-  if (location.hash === "#saved") { setTimeout(openSaved, 0); }
-  if (location.hash === "#profile") { setTimeout(openProfile, 0); }
 
   /* ------------------------------------------------------------------ *
    * Display settings
@@ -1082,14 +1298,6 @@
   const quickReplies = $("quick-replies");
   const input = $("message-input");
   const status = $("speech-status");
-  let senderId;
-  try {
-    senderId = localStorage.getItem("bloom-user-id");
-    if (!senderId) {
-      senderId = "bloom-" + (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + Math.random().toString(36).slice(2));
-      localStorage.setItem("bloom-user-id", senderId);
-    }
-  } catch (e) { senderId = "bloom-session-" + Date.now(); }
 
   function addMessage(text, kind) {
     const m = el("p", "message " + kind, text);
@@ -1178,7 +1386,14 @@
        ["➕ Post an event", "I want to post an event"]].forEach(function (q) {
         const b = el("button", "btn btn-secondary btn-chip", q[0]);
         b.type = "button";
-        b.addEventListener("click", function () { sendMessage(q[1], true); });
+        b.addEventListener("click", function () {
+          if (/post an event/i.test(q[1]) && !session) {
+            pendingCreate = true;
+            openAuth("register", "Create a free account to share events, so neighbors know who is hosting. Already have one? Tap “Log in instead” below.");
+            return;
+          }
+          sendMessage(q[1], true);
+        });
         quickReplies.appendChild(b);
       });
     }
@@ -1221,12 +1436,37 @@
   /* ------------------------------------------------------------------ *
    * Start
    * ------------------------------------------------------------------ */
-  if (location.hash === "#share") { openCreate(); }
-  else if (profile) { renderHome(); show("home"); } else { openSurvey(); }
-  loadCommunityEvents().then(function () { if (!$("home").hidden || !$("saved").hidden || !$("profile").hidden) rerender(); });
-  if (profile && profile.name) syncProfile();  // keep the server's name in step with this device
+  function route() {
+    const known = session || load(GUEST_KEY, false);
+    if (location.hash === "#share") openCreate();
+    else if (known && location.hash === "#saved") openSaved();
+    else if (known && location.hash === "#profile") openProfile();
+    else if (session || load(GUEST_KEY, false)) { if (profile) { renderHome(); show("home"); } else openSurvey(); }
+    else showWelcome();
+  }
+  updateAccountUI();
+  (async function start() {
+    if (params.has("demo")) {
+      // ?demo signs in to the ready-made demo account (username demo, password demo).
+      try {
+        const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: "demo", password: "demo" }) });
+        const data = await res.json();
+        if (res.ok) { setSession(data); applyAccount(data.user); }
+      } catch (e) {}
+    } else if (session) {
+      try {
+        const res = await fetch("/api/me", { headers: authHeaders() });
+        if (res.status === 401) endSession();
+        else if (res.ok) applyAccount((await res.json()).user);
+      } catch (e) { /* offline: keep this device's copy */ }
+    }
+    route();
+    await loadCommunityEvents();
+    if (!$("home").hidden || !$("saved").hidden || !$("profile").hidden || !$("welcome").hidden) rerender();
+  }());
   async function refreshBoard() {
-    if (($("home").hidden && $("saved").hidden && $("profile").hidden) || document.hidden) return;
+    if (($("home").hidden && $("saved").hidden && $("profile").hidden && $("welcome").hidden) || document.hidden) return;
     if (await loadCommunityEvents()) rerender();
   }
   setInterval(refreshBoard, 60000);
