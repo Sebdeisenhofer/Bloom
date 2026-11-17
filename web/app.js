@@ -572,7 +572,10 @@
     const radius = Number($("radius-filter").value);
     let near = null;
     if (geo && geo.lat != null) {
-      list.forEach(function (m) { m.miles = m.ev.lat != null ? haversine(geo.lat, geo.lon, m.ev.lat, m.ev.lon) : null; });
+      const pts = geo.points || [[geo.lat, geo.lon]];  // regions ("the coast") measure to their nearest town
+      list.forEach(function (m) {
+        m.miles = m.ev.lat != null ? Math.min.apply(null, pts.map(function (p) { return haversine(p[0], p[1], m.ev.lat, m.ev.lon); })) : null;
+      });
       near = list.filter(function (m) { return m.miles != null && m.miles <= radius; });
     }
 
@@ -1501,7 +1504,9 @@
     const timer = setTimeout(function () { ctrl.abort(); }, 30000);
     const res = await fetch("/webhooks/rest/webhook", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender: senderId, message: msg, metadata: { language: I.lang } }), signal: ctrl.signal
+      body: JSON.stringify({ sender: senderId, message: msg,
+        metadata: { language: I.lang, interests: (profile && profile.interests) || [], times: (profile && profile.times) || [] } }),
+      signal: ctrl.signal
     });
     clearTimeout(timer);
     if (!res.ok) throw new Error(String(res.status));
@@ -1509,7 +1514,7 @@
   }
   async function syncLanguageToBot() {
     if (languageSentToBot) return;
-    try { await postToBot('/set_language{"language":"' + I.lang + '"}'); languageSentToBot = true; } catch (e) {}
+    try { await postToBot('/set_language{"lang":"' + I.lang + '"}'); languageSentToBot = true; } catch (e) {}
   }
   async function sendMessage(text, showUser, shownAs) {
     const msg = String(text || "").trim();

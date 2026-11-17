@@ -8,6 +8,16 @@ Sources
   Conference public iCal feed (nwcsports.com/calendar.ashx/calendar.ics).
 * Willamette Heritage Center: public events from the museum's calendar JSON
   feed (The Events Calendar WordPress API).
+* Press Play Salem: community calendar JSON feed (The Events Calendar API;
+  robots.txt allows all).
+* Dave in Salem: the blog's public WordPress RSS feed; each post announces one
+  event with its date in the title.
+
+Sources without a public feed (Center 50+, Deepwood, Lord & Schryver, Travel
+Salem, Salem Art Association, Elsinore, Salem Reporter) are represented by
+clearly labelled sample listings from sources.py that link to the real website.
+A feed source falls back to its samples whenever the feed fails or has nothing
+upcoming. Requests are a handful every few hours, with a descriptive User-Agent.
 * Ticketmaster Discovery API: concerts and shows near Salem, used only when
   TICKETMASTER_API_KEY is set (free key from developer.ticketmaster.com).
 * Any extra iCal feeds listed in EXTRA_ICAL_FEEDS, as "Name|https://...ics"
@@ -27,12 +37,15 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 from actions.actions import connect, infer_area, infer_interest_tags, initialize_database
+from actions.sources import SALEM, SOURCES, locate, sample_rows, source_info
 
 LIBRARY_FEED = "https://cityofsalemlibrary.libcal.com/ical_subscribe.php?src=p&cid=16811"
 DAYS_AHEAD = 60
 NWC_FEED = "https://nwcsports.com/calendar.ashx/calendar.ics"
 HERITAGE_API = "https://www.willametteheritage.org/wp-json/tribe/events/v1/events"
-USER_AGENT = "BloomCommunityApp/1.0 (+https://github.com)"
+USER_AGENT = "BloomCommunityApp/1.0 (community events for older adults; +https://github.com/Sebdeisenhofer/Bloom)"
+PRESS_PLAY_API = "https://pressplaysalem.com/wp-json/tribe/events/v1/events"
+DAVE_FEED = "https://daveinsalem.wordpress.com/feed/"
 SALEM_LATLONG = "44.9429,-123.0351"
 
 
@@ -68,6 +81,14 @@ def fetch(url: str, timeout: int = 25) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def place_fields(location: str, city_hint: str = "") -> dict:
+    """lat/lon/city for a venue: known venue table first, else the city (Salem by default)."""
+    where = locate(location, city_hint)
+    if where:
+        return {"lat": where[0], "lon": where[1], "city": where[3]}
+    return {"lat": SALEM[0], "lon": SALEM[1], "city": city_hint or "Salem"}
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +196,10 @@ def events_from_ical(raw: str, source: str, host: str, default_needs: str, skip_
             "cost": "Free",
             "needs": default_needs,
             "url": item.get("URL", ("", []))[0][:300],
+            "source_url": item.get("URL", ("", []))[0][:300] or source_info(source)["url"],
+            "ticket_url": "",
+            "is_sample": 0,
+            **place_fields(location),
         })
     return out
 
@@ -235,6 +260,10 @@ def willamette_athletics_events() -> list[dict]:
             "cost": "See listing",
             "needs": "accessible, seating, bus",
             "url": item.get("URL", ("", []))[0][:300],
+            "source_url": item.get("URL", ("", []))[0][:300] or "https://www.wubearcats.com/calendar",
+            "ticket_url": "",
+            "is_sample": 0,
+            **place_fields(place),
         })
     return out
 
@@ -282,6 +311,140 @@ def heritage_center_events() -> list[dict]:
             "cost": strip_html(ev.get("cost") or "") or "See listing",
             "needs": "",
             "url": (ev.get("url") or "")[:300],
+            "source_url": (ev.get("url") or "")[:300] or source_info("heritage")["url"],
+            "ticket_url": "",
+            "is_sample": 0,
+            **place_fields(location),
+        })
+    return out
+
+
+def press_play_events() -> list[dict]:
+    """Press Play Salem's community calendar (The Events Calendar REST API, robots.txt allows all)."""
+    today = date.today()
+    horizon = today + timedelta(days=DAYS_AHEAD)
+    out, page = [], 1
+    while page <= 4:  # at most 4 small requests per refresh
+        query = urllib.parse.urlencode({"per_page": 50, "page": page, "start_date": today.isoformat(), "end_date": horizon.isoformat()})
+        data = json.loads(fetch(f"{PRESS_PLAY_API}?{query}"))
+        for ev in data.get("events", []):
+            try:
+                start = datetime.strptime(ev["start_date"], "%Y-%m-%d %H:%M:%S")
+                end = datetime.strptime(ev["end_date"], "%Y-%m-%d %H:%M:%S")
+            except (KeyError, ValueError):
+                continue
+            if not today <= start.date() <= horizon:
+                continue
+            title = html.unescape(ev.get("title") or "").strip()
+            description = strip_html(ev.get("description") or ev.get("excerpt") or "")[:600]
+            categories = ", ".join(html.unescape(c.get("name", "")) for c in ev.get("categories") or [])
+            if not title or not is_for_older_adults(title, categories, description):
+                continue
+            venue = ev.get("venue") if isinstance(ev.get("venue"), dict) else {}
+            location = ", ".join(filter(None, [venue.get("venue"), venue.get("address"), venue.get("city")])) or "Salem"
+            cost = strip_html(ev.get("cost") or "")
+            website = (ev.get("website") or "").strip()
+            ticketed = bool(website) and (bool(re.search(r"\$\d", cost)) or bool(re.search(r"ticket|tix|eventbrite|givebutter", website, re.I)))
+            tags = infer_interest_tags(title, description, categories)
+            all_day = bool(ev.get("all_day")) or (start.hour == 0 and end.hour == 23)
+            row = {
+                "external_id": f"pressplay:{ev.get('id')}",
+                "source": "pressplay",
+                "title": title[:120],
+                "date": start.date().isoformat(),
+                "time": "All day" if all_day else clock(start),
+                "end_time": "" if all_day else clock(end),
+                "location": html.unescape(location)[:160],
+                "category": (categories.split(",")[0].strip().title() or "Community")[:40],
+                "tags": ", ".join(tags) or "social",
+                "group_size": "large",
+                "description": description or f"{title} in Salem.",
+                "host": html.unescape(venue.get("venue") or "Press Play Salem"),
+                "area": infer_area(location),
+                "cost": cost or "See website",
+                "needs": "",
+                "url": (ev.get("url") or "")[:300],
+                "source_url": (ev.get("url") or website)[:300],
+                "ticket_url": website[:300] if ticketed else "",
+                "is_sample": 0,
+            }
+            geo = place_fields(location, venue.get("city") or "")
+            if venue.get("geo_lat") and venue.get("geo_lng"):
+                try:
+                    geo.update(lat=float(venue["geo_lat"]), lon=float(venue["geo_lng"]))
+                except (TypeError, ValueError):
+                    pass
+            row.update(geo)
+            out.append(row)
+        if page >= int(data.get("total_pages") or 1):
+            break
+        page += 1
+    return out
+
+
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_DAVE_DATE = re.compile(
+    r"[–—-]\s*(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\.?,?\s+"
+    r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?", re.I)
+
+
+def dave_in_salem_events() -> list[dict]:
+    """Dave in Salem blog: each post announces one event, with the date in its title."""
+    raw = fetch(DAVE_FEED).decode("utf-8", "replace")
+    today = date.today()
+    horizon = today + timedelta(days=DAYS_AHEAD)
+    out = []
+    for item in raw.split("<item>")[1:]:
+        title_m = re.search(r"<title>(.*?)</title>", item, re.S)
+        link_m = re.search(r"<link>(.*?)</link>", item, re.S)
+        pub_m = re.search(r"<pubDate>[^,]*,\s*\d+\s+\w+\s+(\d{4})", item)
+        if not title_m or not link_m:
+            continue
+        full_title = html.unescape(re.sub(r"<!\[CDATA\[|\]\]>", "", title_m.group(1))).strip()
+        when = _DAVE_DATE.search(full_title)
+        if not when:
+            continue
+        year = int(pub_m.group(1)) if pub_m else today.year
+        try:
+            day = date(year, _MONTHS[when.group(1).lower()[:3]], int(when.group(2)))
+        except ValueError:
+            continue
+        if day < today - timedelta(days=60):  # a January event announced in December
+            day = day.replace(year=day.year + 1)
+        if not today <= day <= horizon:
+            continue
+        content = html.unescape(re.sub(r"<[^>]+>", " ", item))
+        time_m = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?", content, re.I)
+        start = ""
+        if time_m:
+            hour = int(time_m.group(1)) % 12 + (12 if time_m.group(3).lower() == "p" else 0)
+            start = clock(datetime(2000, 1, 1, hour, int(time_m.group(2) or 0)))
+        title = re.sub(r"\s*[–—-]\s*(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?.*$", "", full_title, flags=re.I).strip() or full_title
+        description = re.sub(r"\s+", " ", re.sub(r"Continue reading.*", "", content)).strip()[:600]
+        if not is_for_older_adults(title, "", description):
+            continue
+        link_url = link_m.group(1).strip()
+        out.append({
+            "external_id": f"daveinsalem:{link_url}",
+            "source": "daveinsalem",
+            "title": title[:120],
+            "date": day.isoformat(),
+            "time": start or "All day",
+            "end_time": "",
+            "location": "Salem (see Dave in Salem post)",
+            "category": "Local pick",
+            "tags": ", ".join(infer_interest_tags(title, description)) or "social",
+            "group_size": "large",
+            "description": description or f"{title}. Details on Dave in Salem.",
+            "host": "Dave in Salem",
+            "area": "",
+            "cost": "See website",
+            "needs": "",
+            "url": link_url[:300],
+            "source_url": link_url[:300],
+            "ticket_url": "",
+            "is_sample": 0,
+            **place_fields(title),
         })
     return out
 
@@ -355,27 +518,48 @@ def ticketmaster_events() -> list[dict]:
             "cost": cost,
             "needs": "accessible" if venue.get("accessibleSeatingDetail") else "",
             "url": ev.get("url", "")[:300],
+            "source_url": ev.get("url", "")[:300],
+            "ticket_url": ev.get("url", "")[:300],
+            "is_sample": 0,
+            **place_fields(address, (venue.get("city") or {}).get("name", "")),
         })
     return out
 
 
-SOURCES = (
+LOADERS = (
     ("library", library_events),
     ("willamette", willamette_athletics_events),
     ("heritage", heritage_center_events),
+    ("pressplay", press_play_events),
+    ("daveinsalem", dave_in_salem_events),
     ("ticketmaster", ticketmaster_events),
     ("extra feeds", extra_ical_events),
 )
 
 
-def refresh() -> dict:
-    """Fetch every source and upsert into the events table. Returns counts per source."""
+def upsert(db, rows: list[dict]) -> None:
+    for row in rows:
+        cols = ", ".join(row)
+        updates = ", ".join(f"{c}=excluded.{c}" for c in row if c != "external_id")
+        db.execute(
+            f"INSERT INTO events ({cols}) VALUES ({', '.join('?' for _ in row)}) "
+            f"ON CONFLICT(external_id) DO UPDATE SET {updates}",
+            tuple(row.values()),
+        )
+
+
+def refresh(loaders=None) -> dict:
+    """Fetch every live source, store it, and fill gaps with labelled sample listings.
+
+    Returns a count per source, or "error"/"samples" when a source fell back to samples.
+    """
     initialize_database()
-    counts = {}
-    for name, loader in SOURCES:
+    counts: dict = {}
+    live_sources: set[str] = set()
+    for name, loader in loaders or LOADERS:
         try:
             rows = loader()
-        except Exception as error:
+        except Exception as error:  # offline, feed down, unexpected format: fall back below
             print(f"real-events: {name} failed: {error}", flush=True)
             counts[name] = "error"
             continue
@@ -383,22 +567,26 @@ def refresh() -> dict:
         if not rows:
             continue
         with connect() as db:
-            for row in rows:
-                cols = ", ".join(row)
-                updates = ", ".join(f"{c}=excluded.{c}" for c in row if c != "external_id")
+            upsert(db, rows)
+            # Drop listings that vanished from this feed (cancelled events).
+            for src in {r["source"] for r in rows}:
+                live_sources.add(src)
+                ids = [r["external_id"] for r in rows if r["source"] == src]
                 db.execute(
-                    f"INSERT INTO events ({cols}) VALUES ({', '.join('?' for _ in row)}) "
-                    f"ON CONFLICT(external_id) DO UPDATE SET {updates}",
-                    tuple(row.values()),
-                )
-            # Drop listings that vanished from this feed (cancelled events), but keep RSVPs' past rows harmlessly.
-            sources = {r["source"] for r in rows}
-            ids = [r["external_id"] for r in rows]
-            for src in sources:
-                db.execute(
-                    f"DELETE FROM events WHERE source = ? AND date >= ? AND external_id NOT IN ({', '.join('?' for _ in ids)})",
+                    f"DELETE FROM events WHERE source = ? AND is_sample = 0 AND date >= ? "
+                    f"AND external_id NOT IN ({', '.join('?' for _ in ids)})",
                     (src, date.today().isoformat(), *ids),
                 )
+    # Samples: shown for sources with no feed, or whose feed has nothing upcoming right now.
+    with connect() as db:
+        # (The Willamette athletics feed doesn't cover campus arts and lectures, so those samples stay.)
+        samples = [r for r in sample_rows() if r["source"] not in live_sources or r["source"] == "willamette"]
+        upsert(db, samples)
+        keep = [r["external_id"] for r in samples] or ["-"]
+        db.execute(f"DELETE FROM events WHERE is_sample = 1 AND external_id NOT IN ({', '.join('?' for _ in keep)})", keep)
+        for src in {r["source"] for r in samples}:
+            if src in SOURCES and SOURCES[src]["feed"]:
+                counts[src] = f"{counts.get(src, 0)} live, using samples"
     print(f"real-events: refreshed {counts}", flush=True)
     return counts
 

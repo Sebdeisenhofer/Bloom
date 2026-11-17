@@ -3,6 +3,10 @@ version: "3.1"
 intents:
   - go_back
   - set_language
+  - remind
+
+entities:
+  - lang
 
 session_config:
   session_expiration_time: 1440
@@ -78,57 +82,129 @@ slots:
     type: text
     mappings:
       - type: from_llm
+  reminder_timing:
+    type: text
+    mappings:
+      - type: from_llm
 
 responses:
   utter_welcome:
-    - text: "Hello, I’m Bloom, and I’m glad you’re here. I can help you find friendly local activities, or help you share an event."
+    - text: "Hello, I’m Bloom 🌸, and I’m glad you’re here. I can help you find friendly local activities, or help you share an event."
+      translation:
+        es: "Hola, soy Bloom 🌸 y me alegra que esté aquí. Puedo ayudarle a encontrar actividades locales o a compartir un evento."
   utter_welcome_back:
-    - text: "You’re all set! Here’s what I can help with:\n• Find events this week. Try “What’s on this week?”\n• Search by type. Try “Find music events” or “Find exercise classes”\n• Post your own event. Say “I want to post an event”"
+    - text: "You’re all set! 🌸 Here’s what I can help with:\n• Find events this week. Try “What’s on this week?”\n• Search by type or place. Try “Find garden events” or “Events near Silverton”\n• Post your own event. Say “I want to post an event”"
+      translation:
+        es: "¡Todo listo! 🌸 Puedo ayudarle a:\n• Encontrar eventos de esta semana. Pruebe “¿Qué hay esta semana?”\n• Buscar por tipo o lugar. Pruebe “Eventos de jardinería” o “Eventos cerca de Silverton”\n• Publicar su propio evento. Diga “Quiero publicar un evento”"
   utter_ask_hobbies:
     - text: "What do you enjoy doing for fun?"
+      translation:
+        es: "¿Qué le gusta hacer para divertirse?"
   utter_ask_partner_activities:
     - text: "Would you like activities you can enjoy with a partner or spouse?"
+      translation:
+        es: "¿Le gustarían actividades para disfrutar con su pareja?"
   utter_ask_interests:
     - text: "What kinds of community events sound interesting to you?"
+      translation:
+        es: "¿Qué tipo de eventos comunitarios le interesan?"
   utter_ask_preferred_times:
     - text: "What time of day usually works best for you?"
+      translation:
+        es: "¿Qué hora del día le queda mejor normalmente?"
   utter_ask_preferred_group_size:
     - text: "Do you prefer a small group or a larger group?"
+      translation:
+        es: "¿Prefiere un grupo pequeño o uno más grande?"
   utter_ask_travel_distance:
     - text: "How far are you comfortable traveling for an activity?"
+      translation:
+        es: "¿Qué tan lejos está dispuesto a ir para una actividad?"
   utter_ask_event_title:
-    - text: "What would you like to call your event?"
+    - text: "What would you like to call your event? ✏️"
+      translation:
+        es: "¿Cómo le gustaría llamar a su evento? ✏️"
   utter_ask_event_date:
-    - text: "What day will it take place?"
+    - text: "What day will it take place? 📅"
+      translation:
+        es: "¿Qué día será? 📅"
   utter_ask_event_time:
-    - text: "What time will it start?"
+    - text: "What time will it start? 🕑"
+      translation:
+        es: "¿A qué hora empieza? 🕑"
   utter_ask_event_location:
-    - text: "Where will people meet?"
+    - text: "Where will people meet? 📍"
+      translation:
+        es: "¿Dónde se reunirán? 📍"
   utter_ask_event_host:
     - text: "What name should I list as the host?"
+      translation:
+        es: "¿Qué nombre pongo como organizador?"
   utter_ask_event_description:
     - text: "Would you like to tell people a little about it, like what to bring or who it’s for? This is optional. Say “skip” if you’d rather not."
+      translation:
+        es: "¿Quiere contar un poco sobre el evento, como qué traer o para quién es? Es opcional. Diga “omitir” si prefiere no hacerlo."
   utter_ask_event_confirmation:
     - text: "Does everything look right? Say yes to post it, or no to cancel."
       buttons:
         - title: "Yes, post it"
           payload: '/SetSlots(event_confirmation=yes)'
+          translation:
+            es:
+              title: "Sí, publicarlo"
+              payload: '/SetSlots(event_confirmation=yes)'
         - title: "No, don’t post it"
           payload: '/SetSlots(event_confirmation=no)'
+          translation:
+            es:
+              title: "No, no publicarlo"
+              payload: '/SetSlots(event_confirmation=no)'
+      translation:
+        es: "¿Está todo bien? Diga sí para publicarlo o no para cancelar."
   utter_event_not_posted:
     - text: "No problem. I haven’t posted the event."
+      translation:
+        es: "No hay problema. No publiqué el evento."
   utter_ask_interest_text:
     - text: "What would you like to try or find nearby?"
+      translation:
+        es: "¿Qué le gustaría probar o encontrar cerca?"
   utter_help:
-    - text: "I can suggest Salem-area events, tell you about an event, save your RSVP, or help you post an event. You can also tell me about new interests."
+    - text: "I can suggest Salem-area events 📅, search by place or ZIP code 📍, tell you about an event, save it to My Events with a reminder ⏰, or help you post an event. Say “go back” anytime to change your last answer."
+      translation:
+        es: "Puedo sugerirle eventos en Salem 📅, buscar por lugar o código postal 📍, contarle sobre un evento, guardarlo en Mis eventos con un recordatorio ⏰, o ayudarle a publicar un evento. Diga “volver atrás” cuando quiera cambiar su última respuesta."
   utter_cancelled:
     - text: "That’s okay. I’ve stopped that for now. What would you like to do instead?"
+      translation:
+        es: "Está bien. Lo detuve por ahora. ¿Qué le gustaría hacer?"
   utter_goodbye:
-    - text: "Take care. I’m here whenever you’d like to find something to do."
+    - text: "Take care. I’m here whenever you’d like to find something to do. 🌸"
+      translation:
+        es: "Cuídese. Aquí estoy cuando quiera encontrar algo que hacer. 🌸"
+  utter_flow_cancelled_rasa:
+    - text: "That’s okay, I’ve stopped that. 🌸 What would you like to do instead?"
+      translation:
+        es: "Está bien, lo detuve. 🌸 ¿Qué le gustaría hacer?"
+  utter_corrected_previous_input:
+    - text: "Got it, I’ve updated that."
+      translation:
+        es: "Entendido, ya lo actualicé."
+  utter_can_do_something_else:
+    - text: "Is there anything else I can help you with?"
+      translation:
+        es: "¿Hay algo más en lo que pueda ayudarle?"
+  utter_internal_error_rasa:
+    - text: "Sorry, I’m having trouble right now. Please try again in a moment. Every event is still in the Events tab."
+      translation:
+        es: "Lo siento, tengo un problema en este momento. Inténtelo de nuevo en un momento. Todos los eventos siguen en la pestaña Eventos."
   utter_flow_continue_interrupted:
     - text: "Okay, back to where we were."
+      translation:
+        es: "Muy bien, sigamos donde estábamos."
   utter_fallback:
     - text: "I’m sorry, I didn’t quite get that. You can ask me to find events, tell you more, or help you post one."
+      translation:
+        es: "Perdón, no le entendí bien. Puede pedirme que busque eventos, que le cuente más o que le ayude a publicar uno."
 
 actions:
   - action_load_profile
@@ -139,7 +215,7 @@ actions:
   - action_get_event_details
   - action_save_rsvp
   - action_update_interests
-  - action_cancel_flow
+  - action_clear_task_slots
   - action_repeat_last_message
   - action_handle_free_text
   - validate_event_date
@@ -148,3 +224,5 @@ actions:
   - validate_event_description
   - action_skip_question
   - action_go_back
+  - action_set_reminder
+  - action_set_language

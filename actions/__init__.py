@@ -1,27 +1,3 @@
-from .actions import (
-    ActionCancelFlow,
-    ActionGetEventDetails,
-    ActionHandleFreeText,
-    ActionLoadProfile,
-    ActionRepeatLastMessage,
-    ActionReviewEvent,
-    ActionSaveEvent,
-    ActionSaveProfile,
-    ActionSaveRsvp,
-    ActionSearchEvents,
-    ActionUpdateInterests,
-)
+"""Bloom custom actions. Importing the module registers every Action subclass with the action server."""
 
-__all__ = [
-    "ActionCancelFlow",
-    "ActionGetEventDetails",
-    "ActionHandleFreeText",
-    "ActionLoadProfile",
-    "ActionRepeatLastMessage",
-    "ActionReviewEvent",
-    "ActionSaveEvent",
-    "ActionSaveProfile",
-    "ActionSaveRsvp",
-    "ActionSearchEvents",
-    "ActionUpdateInterests",
-]
+from . import actions  # noqa: F401

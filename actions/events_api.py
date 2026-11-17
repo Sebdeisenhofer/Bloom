@@ -18,6 +18,7 @@ so anything posted here is also searchable by the "Ask Bloom" assistant.
     GET    /api/community?owner=      -> community posts (meetups, interest groups) with joins and comments
     POST   /api/community             -> new post (signed in); POST /api/community/<id>/join toggles joining
     POST   /api/community/<id>/comments -> add a comment (signed in); DELETE /api/community/<id> removes your post
+    GET    /api/geo?q=                -> {lat, lon, label} for a ZIP, town or region ("coast")
     GET    /api/health                -> {"ok": true}
 
 Authentication: "Authorization: Bearer <token>". Passwords are stored as salted
@@ -37,8 +38,9 @@ from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from actions.actions import connect, initialize_database
-from actions import real_events
+from actions.actions import connect, email_ready, initialize_database, sms_ready
+from actions import geo, real_events
+from actions.sources import SALEM, SAMPLE_POSTS, locate, source_info
 
 REFRESH_HOURS = float(os.environ.get("REAL_EVENTS_REFRESH_HOURS", "3"))
 
@@ -125,6 +127,12 @@ def migrate() -> None:
         if not db.execute("SELECT 1 FROM accounts WHERE username = 'demo'").fetchone():
             create_account(db, "demo", "demo", DEMO_PROFILE, [], email="demo@bloom.local", name="Margaret")
         db.execute("UPDATE accounts SET email = 'demo@bloom.local', name = 'Margaret' WHERE username = 'demo' AND email = ''")
+        # Sample interest groups so the Community tab has examples on day one (clearly marked "Sample").
+        if not db.execute("SELECT 1 FROM posts LIMIT 1").fetchone():
+            db.execute("INSERT OR IGNORE INTO members (user_id, name, email, updated_at) VALUES ('sample-bloom', 'Bloom team', '', ?)", (now_iso(),))
+            for category, title, schedule, place, body in SAMPLE_POSTS:
+                db.execute("INSERT INTO posts (user_id, category, title, body, schedule, place, is_sample, created_at) "
+                           "VALUES ('sample-bloom', ?, ?, ?, ?, ?, 1, ?)", (category, title, body, schedule, place, now_iso()))
 
 
 COMMUNITY_CATEGORIES = {
@@ -267,6 +275,14 @@ def to_json(row) -> dict:
         "host": r["host"],
         "desc": r["description"],
         "createdBy": r.get("created_by") or "",
+        "sourceName": source_info(r.get("source") or "")["name"],
+        "sourceIcon": source_info(r.get("source") or "")["icon"],
+        "sourceUrl": r.get("source_url") or r.get("url") or "",
+        "ticketUrl": r.get("ticket_url") or "",
+        "sample": bool(r.get("is_sample")),
+        "lat": r.get("lat"),
+        "lon": r.get("lon"),
+        "city": r.get("city") or "",
         "posterName": r.get("poster_name") or "",
         "posterEvents": r.get("poster_events") or 0,
         "source": r.get("source") or ("community" if r.get("created_by") else "sample"),
@@ -327,6 +343,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"saved": ids})
         if path == "/api/community":
             return self.list_posts(owner)
+        if path == "/api/geo":
+            point = geo.lookup(clean((query.get("q") or [""])[0], 80))
+            return self.send(200, point or {"error": "not found"})
         if path != "/api/events":
             return self.send(404, {"error": "Not found"})
         with connect() as db:
@@ -340,7 +359,11 @@ class Handler(BaseHTTPRequestHandler):
                 (date.today().isoformat(), REPORT_LIMIT),
             ).fetchall()
         events = [to_json(r) for r in rows]
-        self.send(200, {"events": events, "real": any(e["source"] not in ("community", "sample") for e in events)})
+        self.send(200, {
+            "events": events,
+            "real": any(not e["sample"] and e["source"] != "community" for e in events),
+            "config": {"email": email_ready(), "sms": sms_ready(), "calendar": True},
+        })
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path.rstrip("/")
@@ -404,6 +427,8 @@ class Handler(BaseHTTPRequestHandler):
             poster = member(db, account["user_id"])
             if event["host"] == "A Bloom neighbor":
                 event["host"] = poster["name"] if poster else account["username"]
+            where = locate(event["location"]) or (*SALEM, event["area"], "Salem")
+            event.update(lat=where[0], lon=where[1], city=where[3])
             cols = ", ".join(event)
             marks = ", ".join("?" for _ in event)
             cursor = db.execute(f"INSERT INTO events ({cols}) VALUES ({marks})", tuple(event.values()))

@@ -83,14 +83,9 @@ flows:
           - event_confirmation: null
 
   search_events:
-    description: Find local events and rank every event against the visitor's interests; optional day, time, place, and category filters may guide ordering.
+    description: Find local events and rank every event against the visitor's interests. Handles kinds of events, days, times, volunteer opportunities, and places such as a town, "the coast", "Portland", or a ZIP code with a distance ("within 10 miles of 97301").
     steps:
       - action: action_search_events
-
-  event_details:
-    description: Give details about a selected event and offer to save an RSVP.
-    steps:
-      - action: action_get_event_details
 
   update_interests:
     description: Add a new interest from free text and immediately search events with it.
@@ -100,14 +95,28 @@ flows:
       - action: action_update_interests
 
   get_event_details:
-    description: Show where and when an event is and offer to attend.
+    description: Tell the visitor about one specific event they name or pick ("tell me more about event 12", "tell me about the garden tour"), and offer to save it.
     steps:
       - action: action_get_event_details
 
   rsvp_event:
-    description: Save the visitor's RSVP for the selected event.
+    description: Save an event to the visitor's My Events list, when they say yes to going or ask to save, RSVP, or attend a named event ("save the Gaiety Hollow Garden Tour", "yes, I'd like to go").
     steps:
       - action: action_save_rsvp
+
+  set_reminder:
+    description: Set a reminder for a saved event, for example "remind me a day before", "remind me 2 hours before", "set a reminder", "recuérdame".
+    nlu_trigger:
+      - intent: remind
+    steps:
+      - action: action_set_reminder
+
+  set_language:
+    description: Switch the conversation language when the visitor asks to talk in Spanish or English ("habla español", "in English please").
+    nlu_trigger:
+      - intent: set_language
+    steps:
+      - action: action_set_language
 
   help:
     description: Explain what the assistant can do.
@@ -120,11 +129,6 @@ flows:
       - intent: go_back
     steps:
       - action: action_go_back
-
-  cancel:
-    description: Stop the current task completely when the visitor asks to cancel, stop, or quit.
-    steps:
-      - action: action_cancel_flow
 
   repeat_last_message:
     description: Repeat the last assistant message when asked.
@@ -160,6 +164,14 @@ flows:
     name: pattern skip question
     steps:
       - action: action_skip_question
+
+  pattern_cancel_flow:
+    description: The visitor asked to stop the current task. Rasa's built-in action removes it; then the task's answers are cleared.
+    name: pattern cancel flow
+    steps:
+      - action: action_cancel_flow
+      - action: action_clear_task_slots
+      - action: utter_flow_cancelled_rasa
 
   pattern_continue_interrupted:
     description: Resume the interrupted task right away (the assistant already said what is happening).

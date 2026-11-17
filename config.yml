@@ -1,8 +1,11 @@
 recipe: default.v1
 language: en
+additional_languages:
+  - es
 assistant_id: bloom
 pipeline:
   - name: KeywordIntentClassifier
+    case_sensitive: false
   - name: NLUCommandAdapter
   - name: CompactLLMCommandGenerator
     llm:

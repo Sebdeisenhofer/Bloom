@@ -16,3 +16,11 @@ nlu:
       - volver atrás
       - regresar
       - cambiar mi respuesta
+  - intent: remind
+    examples: |
+      - remind me
+      - reminder
+      - set a reminder
+      - recuérdame
+      - recuerdame
+      - recordatorio

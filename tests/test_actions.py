@@ -24,21 +24,42 @@ class CommunityActionTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_seed_contains_twenty_five_events(self):
+    def test_first_start_loads_labelled_sample_listings(self):
+        from actions.sources import SAMPLES
+
         with actions.connect() as db:
-            count = db.execute("SELECT COUNT(*) FROM events").fetchone()[0]
-        self.assertEqual(count, 25)
+            rows = db.execute("SELECT * FROM events").fetchall()
+        self.assertEqual(len(rows), len(SAMPLES))
+        self.assertTrue(all(r["is_sample"] == 1 and r["source_url"].startswith("https://") for r in rows))
+        self.assertTrue(all(r["lat"] is not None and r["lon"] is not None for r in rows))
+        sources = {r["source"] for r in rows}
+        for key in ("center50", "deepwood", "lordschryver", "elsinore", "travelsalem", "salemart", "salemreporter", "daveinsalem"):
+            self.assertIn(key, sources)
+
+    def test_seed_includes_volunteering_and_a_french_conversation_group(self):
+        with actions.connect() as db:
+            titles = [r["title"] for r in db.execute("SELECT title FROM events WHERE tags LIKE '%volunteering%'")]
+            french = db.execute("SELECT * FROM events WHERE title LIKE '%French Conversation%'").fetchone()
+        self.assertGreaterEqual(len(titles), 3)
+        self.assertIn("language", french["tags"])
 
     def test_rankings_keep_every_event_and_put_relevant_options_first(self):
-        ranked = actions.rank_events({"interests": "reading books", "preferred_times": "morning", "preferred_group_size": "small"})
-        self.assertEqual(len(ranked), 25)
-        self.assertEqual(ranked[0]["title"], "Salem Library Book Club")
-        self.assertTrue(all(event["why"] for event in ranked))
+        ranked = actions.rank_events({"interests": "reading books", "preferred_times": "morning"})
+        with actions.connect() as db:
+            self.assertEqual(len(ranked), db.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        self.assertIn("books", actions.tag_keys(ranked[0]["tags"], ranked[0]["title"]))
 
-    def test_day_time_and_location_are_ordering_filters_not_exclusions(self):
-        ranked = actions.rank_events({}, "Find Saturday morning events near Riverfront Park")
-        self.assertEqual(len(ranked), 25)
-        self.assertEqual(ranked[0]["title"], "Riverfront Park Walking Group")
+    def test_gardening_profile_ranks_deepwood_and_lord_schryver_first(self):
+        ranked = actions.rank_events({"interests": "gardening"})
+        self.assertEqual({e["source"] for e in ranked[:5]}, {"deepwood", "lordschryver"})
+
+    def test_center_50_is_weighted_for_everyone(self):
+        ranked = actions.rank_events({})
+        self.assertEqual(ranked[0]["source"], "center50")
+
+    def test_asking_for_a_kind_of_event_orders_without_excluding(self):
+        ranked = actions.rank_events({}, "Find card games on Tuesday afternoon")
+        self.assertEqual(ranked[0]["title"], "Pinochle, Bridge & Card Games")
 
     def test_profile_is_saved_and_loaded_by_user_id(self):
         tracker = FakeTracker()
@@ -47,12 +68,6 @@ class CommunityActionTests(unittest.TestCase):
         self.assertEqual(loaded["hobbies"], "gardening")
         self.assertEqual(loaded["interests"], "birdwatching")
         self.assertEqual(profile["interests"], "birdwatching")
-
-    def test_event_category_search_is_retained_as_an_interest(self):
-        profile = {}
-        actions.rank_events(profile, "Find book clubs near me")
-        self.assertIn("book", profile["interests"])
-
 
 
 class DateTimeUnderstandingTests(unittest.TestCase):
