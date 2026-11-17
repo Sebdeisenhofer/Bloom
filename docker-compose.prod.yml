@@ -18,6 +18,9 @@ services:
   web:
     restart: unless-stopped
     ports: !reset []
+  mailhog:
+    restart: unless-stopped
+    ports: !reset []   # the demo inbox is not published on a public server
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped

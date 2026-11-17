@@ -19,6 +19,10 @@ so anything posted here is also searchable by the "Ask Bloom" assistant.
     POST   /api/community             -> new post (signed in); POST /api/community/<id>/join toggles joining
     POST   /api/community/<id>/comments -> add a comment (signed in); DELETE /api/community/<id> removes your post
     GET    /api/geo?q=                -> {lat, lon, label} for a ZIP, town or region ("coast")
+    GET    /api/reminders?owner=      -> reminders for this person's saved events
+    POST   /api/reminders             -> {owner, event_id, timing: 1d|2h, channels: [email, sms], email, phone}
+    POST   /api/reminders/test        -> send a reminder right now (for demos; rate limited)
+    DELETE /api/reminders?owner=&event_id= -> stop reminders for an event
     GET    /api/health                -> {"ok": true}
 
 Authentication: "Authorization: Bearer <token>". Passwords are stored as salted
@@ -38,8 +42,8 @@ from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from actions.actions import connect, email_ready, initialize_database, sms_ready
-from actions import geo, real_events
+from actions.actions import connect, email_ready, initialize_database, reminder_send_at, sms_ready
+from actions import geo, notify, real_events
 from actions.sources import SALEM, SAMPLE_POSTS, locate, source_info
 
 REFRESH_HOURS = float(os.environ.get("REAL_EVENTS_REFRESH_HOURS", "3"))
@@ -343,6 +347,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"saved": ids})
         if path == "/api/community":
             return self.list_posts(owner)
+        if path == "/api/reminders":
+            with connect() as db:
+                if not self.owner_ok(db, owner):
+                    return self.send(403, {"error": "Not allowed."})
+                rows = [dict(r) for r in db.execute(
+                    "SELECT event_id, timing, channel, status, send_at, detail FROM reminders WHERE owner = ? ORDER BY send_at", (owner,))]
+            return self.send(200, {"reminders": rows, "config": {"email": email_ready(), "sms": sms_ready(), "calendar": True}})
         if path == "/api/geo":
             point = geo.lookup(clean((query.get("q") or [""])[0], 80))
             return self.send(200, point or {"error": "not found"})
@@ -394,6 +405,8 @@ class Handler(BaseHTTPRequestHandler):
                 db.execute("DELETE FROM rsvps WHERE user_id = ?", (guest,))
                 ids = [r[0] for r in db.execute("SELECT event_id FROM rsvps WHERE user_id = ?", (account["user_id"],))]
             return self.send(200, {"saved": ids})
+        if path in ("/api/reminders", "/api/reminders/test"):
+            return self.save_reminder(body, test=path.endswith("/test"))
         if path == "/api/community":
             return self.create_post(body)
         join = re.fullmatch(r"/api/community/(\d+)/join", path)
@@ -441,6 +454,63 @@ class Handler(BaseHTTPRequestHandler):
             account = self.session_user(db)
             return bool(account and account["user_id"] == owner)
         return owner.startswith("bloom-") and 10 <= len(owner) <= 80
+
+    # ---- reminders ------------------------------------------------------
+    test_sends: dict = {}
+
+    def save_reminder(self, body: dict, test: bool = False) -> None:
+        owner = clean(body.get("owner"), 80)
+        timing = body.get("timing") if body.get("timing") in ("1d", "2h") else "1d"
+        lang = body.get("lang") if body.get("lang") in ("en", "es") else "en"
+        channels = [c for c in body.get("channels") or [] if c in ("email", "sms")]
+        email = clean(body.get("email"), 120)
+        phone = notify.normalize_phone(clean(body.get("phone"), 30))
+        try:
+            event_id = int(body.get("event_id"))
+        except (TypeError, ValueError):
+            return self.send(400, {"error": "Missing event."})
+        results = {}
+        with connect() as db:
+            if not self.owner_ok(db, owner):
+                return self.send(403, {"error": "Not allowed."})
+            row = db.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+            if not row:
+                return self.send(404, {"error": "That event is no longer listed."})
+            event = dict(row)
+            if test:  # demo button: at most 3 test reminders per person per hour
+                recent = [t for t in self.test_sends.get(owner, []) if clock_time.time() - t < 3600]
+                if len(recent) >= 3:
+                    return self.send(429, {"error": "That’s a few test reminders already. Please try again later."})
+                self.test_sends[owner] = recent + [clock_time.time()]
+            db.execute("INSERT OR IGNORE INTO rsvps (user_id, event_id) VALUES (?, ?)", (owner, event_id))
+            if not test:
+                db.execute("DELETE FROM reminders WHERE owner = ? AND event_id = ? AND channel IN ('email', 'sms')", (owner, event_id))
+            send_at = reminder_send_at(event, timing)
+            for channel in channels:
+                contact = email if channel == "email" else phone
+                ready = email_ready() if channel == "email" else notify.sms_ready()
+                if channel == "email" and not EMAIL_RE.match(contact):
+                    results[channel] = {"ok": False, "status": "needs_contact"}
+                    continue
+                if channel == "sms" and len(contact) < 11:
+                    results[channel] = {"ok": False, "status": "needs_contact"}
+                    continue
+                if test:
+                    subject, text = notify.reminder_text(event, timing, lang)
+                    ok, detail = notify.send_email(contact, subject, text) if channel == "email" else notify.send_sms(contact, f"{subject}. {event['location']}")
+                    results[channel] = {"ok": ok, "status": "sent" if ok else ("not_configured" if not ready else "failed"), "detail": detail}
+                    continue
+                if not ready:  # nothing is sent; log what would have gone out (spec: graceful, visible)
+                    subject, text = notify.reminder_text(event, timing, lang)
+                    print(f"events-api: {channel} reminders not configured; would send at {send_at} to {contact}: {subject}", flush=True)
+                db.execute(
+                    "INSERT INTO reminders (owner, event_id, timing, channel, contact, send_at, status, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(owner, event_id, timing, channel) DO UPDATE SET contact = excluded.contact, "
+                    "send_at = excluded.send_at, status = excluded.status, lang = excluded.lang, detail = ''",
+                    (owner, event_id, timing, channel, contact, send_at, "pending" if ready else "not_configured", lang),
+                )
+                results[channel] = {"ok": ready, "status": "scheduled" if ready else "not_configured", "send_at": send_at}
+        self.send(200, {"results": results, "config": {"email": email_ready(), "sms": notify.sms_ready(), "calendar": True}})
 
     # ---- community feed -------------------------------------------------
     def list_posts(self, owner: str) -> None:
@@ -594,6 +664,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(403, {"error": "Not allowed."})
                 db.execute("DELETE FROM rsvps WHERE user_id = ? AND event_id = ?", (owner, int(saved.group(1))))
             return self.send(200, {"saved": False})
+        if path == "/api/reminders":
+            query = parse_qs(parsed.query)
+            owner = clean((query.get("owner") or [""])[0], 80)
+            with connect() as db:
+                if not self.owner_ok(db, owner):
+                    return self.send(403, {"error": "Not allowed."})
+                db.execute("DELETE FROM reminders WHERE owner = ? AND event_id = ?", (owner, int((query.get("event_id") or ["0"])[0] or 0)))
+            return self.send(200, {"deleted": True})
         post = re.fullmatch(r"/api/community/(\d+)", path)
         if post:
             with connect() as db:
@@ -633,9 +711,41 @@ def refresh_forever() -> None:
         clock_time.sleep(REFRESH_HOURS * 3600)
 
 
+def send_due_reminders() -> int:
+    """Send email/text reminders whose time has come. Returns how many were attempted."""
+    now = datetime.now().isoformat(timespec="minutes")
+    with connect() as db:
+        due = [dict(r) for r in db.execute(
+            "SELECT r.*, e.title, e.date, e.time, e.location, e.source_url, e.url FROM reminders r "
+            "JOIN events e ON e.id = r.event_id WHERE r.status = 'pending' AND r.send_at <= ? AND e.date >= date('now', '-1 day')",
+            (now,))]
+    for reminder in due:
+        subject, text = notify.reminder_text(reminder, reminder["timing"], reminder.get("lang") or "en")
+        if reminder["channel"] == "email":
+            ok, detail = notify.send_email(reminder["contact"], subject, text)
+        else:
+            ok, detail = notify.send_sms(reminder["contact"], f"{subject}. {reminder['location']}")
+        with connect() as db:
+            db.execute("UPDATE reminders SET status = ?, detail = ?, sent_at = ? WHERE id = ?",
+                       ("sent" if ok else "failed", detail[:200], datetime.now().isoformat(timespec="seconds"), reminder["id"]))
+    return len(due)
+
+
+def reminders_forever() -> None:
+    while True:
+        try:
+            send_due_reminders()
+        except Exception as error:  # never let reminders take the API down
+            print(f"events-api: reminder loop error: {error}", flush=True)
+        clock_time.sleep(60)
+
+
 def main() -> None:
     migrate()
     threading.Thread(target=refresh_forever, daemon=True).start()
+    threading.Thread(target=reminders_forever, daemon=True).start()
+    print(f"Reminders: email {'on' if email_ready() else 'off (set SMTP_HOST)'}, "
+          f"text {'on' if notify.sms_ready() else 'off (Text reminders not configured)'}", flush=True)
     print(f"Bloom events API listening on :{PORT}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 

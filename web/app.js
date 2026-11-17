@@ -1486,6 +1486,7 @@
       if (r.text) addMessage(r.text, "assistant");
       if (r.custom && Array.isArray(r.custom.events)) r.custom.events.forEach(chatEventCard);
       if (r.custom && (r.custom.event_created || r.custom.saved_event || r.custom.reminder)) {
+        if (window.BloomReminders) window.BloomReminders.reload();
         loadEvents().then(loadSaved).then(rerender);
       }
       (r.buttons || []).forEach(function (btn) {

@@ -6,6 +6,11 @@ services:
     environment:
       COMMUNITY_DB_PATH: /data/community.sqlite3
       TZ: America/Los_Angeles  # "today" means today in Salem
+      # The chat can set reminders too; it only needs to know which channels are configured.
+      SMTP_HOST: ${SMTP_HOST-mailhog}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
     volumes:
       - community-data:/data
     healthcheck:
@@ -26,6 +31,18 @@ services:
       # Optional real-event sources (Salem Public Library is always on).
       TICKETMASTER_API_KEY: ${TICKETMASTER_API_KEY:-}
       EXTRA_ICAL_FEEDS: ${EXTRA_ICAL_FEEDS:-}
+      # Reminder email: defaults to the MailHog demo inbox (http://localhost:8025).
+      # Set SMTP_HOST= (empty) in .env to turn email reminders off, or point it at a real server.
+      SMTP_HOST: ${SMTP_HOST-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Bloom <reminders@bloom.local>}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      # Text reminders: optional. Without these, Bloom shows "Text reminders not configured".
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
     volumes:
       - community-data:/data
     healthcheck:
@@ -69,6 +86,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  mailhog:
+    # Demo inbox for reminder emails: open http://localhost:8025 to read them. Nothing leaves your computer.
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "8025:8025"
 
 volumes:
   community-data:

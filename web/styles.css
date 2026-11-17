@@ -499,3 +499,7 @@ body.high-contrast .post-card, body.high-contrast .chat-page { border: 3px solid
 .more-filters { margin-top: .7rem; }
 .more-filters summary { min-height: 48px; display: flex; align-items: center; font-weight: 700; color: var(--brand-dark); cursor: pointer; }
 .more-filters[open] summary { margin-bottom: .5rem; }
+
+.reminder-title { margin: 0; font-weight: 700; font-size: 1.1rem; color: var(--brand-dark); }
+.reminder-notes { margin: 0; padding-left: 1.2rem; color: var(--muted); font-size: .95rem; }
+.choice.is-off { opacity: .55; cursor: not-allowed; }

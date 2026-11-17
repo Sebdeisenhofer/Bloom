@@ -60,6 +60,7 @@ def initialize_database() -> None:
                 detail TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 sent_at TEXT,
+                lang TEXT NOT NULL DEFAULT 'en',
                 UNIQUE (owner, event_id, timing, channel)
             );
             CREATE TABLE IF NOT EXISTS rsvps (
@@ -95,6 +96,8 @@ def initialize_database() -> None:
             if name not in existing:
                 db.execute(f"ALTER TABLE events ADD COLUMN {name} {ddl}")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS events_external_id ON events(external_id)")
+        if "lang" not in {row["name"] for row in db.execute("PRAGMA table_info(reminders)")}:
+            db.execute("ALTER TABLE reminders ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'")
         # The original invented demo events (no source) are retired in favor of real and sample listings.
         db.execute("DELETE FROM events WHERE source = '' AND created_by IS NULL")
         db.execute("UPDATE events SET source_url = url WHERE source_url = '' AND url != ''")
@@ -292,8 +295,9 @@ INTEREST_KEYWORDS = {
     "family": ("kid", "child", "children", "storytime", "toddler", "preschool", "teen", "family", "families",
                "grandparent", "baby", "babies", "infant", "tween"),
     "social": ("coffee", "social", "conversation", "friendship", "club", "chat", "discussion", "gathering", "neighbor", "café", "charlar", "amigos", "vecinos", "reunión"),
-    "language": ("french", "spanish", "german", "italian", "japanese", "esl", "conversation group", "language",
-                 "español", "francés", "idioma", "conversación", "círculo", "cercle", "français"),
+    "language": ("french", "spanish conversation", "german", "italian", "japanese", "esl", "conversation group",
+                 "conversation circle", "language exchange", "language group", "language club",
+                 "español", "francés", "idioma", "idiomas", "conversación", "círculo de conversación", "cercle", "français"),
 }
 _INTEREST_PATTERNS = {
     key: re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")(?:s|es|ing|ers?)?\b", re.I)
@@ -944,12 +948,7 @@ def reminder_send_at(event: dict, timing: str) -> str:
     return (when - (timedelta(days=1) if timing == "1d" else timedelta(hours=2))).isoformat(timespec="minutes")
 
 
-def email_ready() -> bool:
-    return bool(os.environ.get("SMTP_HOST", "").strip())
-
-
-def sms_ready() -> bool:
-    return all(os.environ.get(k, "").strip() for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"))
+from actions.notify import email_ready, sms_ready  # noqa: E402  (optional email/SMS settings)
 
 
 class ActionSetReminder(Action):
@@ -1001,9 +1000,9 @@ class ActionSetReminder(Action):
             db.execute("INSERT OR IGNORE INTO rsvps (user_id, event_id) VALUES (?, ?)", (user_id, event["id"]))
             for channel, contact in channels or [("calendar", "")]:
                 db.execute(
-                    "INSERT INTO reminders (owner, event_id, timing, channel, contact, send_at, status) VALUES (?, ?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(owner, event_id, timing, channel) DO UPDATE SET contact = excluded.contact, send_at = excluded.send_at, status = excluded.status",
-                    (user_id, event["id"], timing, channel, contact, send_at, "pending" if channel != "calendar" else "calendar"),
+                    "INSERT INTO reminders (owner, event_id, timing, channel, contact, send_at, status, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(owner, event_id, timing, channel) DO UPDATE SET contact = excluded.contact, send_at = excluded.send_at, status = excluded.status, lang = excluded.lang",
+                    (user_id, event["id"], timing, channel, contact, send_at, "pending" if channel != "calendar" else "calendar", lang),
                 )
         when = t(lang, "reminder_" + timing)
         if channels:
