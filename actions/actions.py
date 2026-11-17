@@ -288,6 +288,17 @@ def parse_event_time(text: str) -> str | None:
     return f"{(hour + 11) % 12 + 1}:{minute:02d} {'AM' if hour < 12 else 'PM'}"
 
 
+MESSAGES = {
+    "go_back_ok": "Okay, let’s go back to the previous question.",
+    "go_back_first": "This is the first question, so there’s nothing before it. You can answer it, or say “cancel” to stop.",
+    "go_back_nothing": "There’s no question to go back to right now. You can ask me to find events or post one.",
+}
+
+
+def t(tracker: Tracker | None, key: str, **values) -> str:
+    return MESSAGES[key].format(**values)
+
+
 WHAT_YOU_CAN_DO = (
     "Welcome back! Here’s what I can help with:\n"
     "• Find events this week. Try “What’s on this week?”\n"
@@ -631,6 +642,76 @@ class ValidateEventDescription(Action):
         if is_skip(said) or is_skip(value):
             return [SlotSet("event_description", "skip")]
         return []
+
+
+# ---------------------------------------------------------------------------
+# "Go back" / "previous question": rewind the active flow by one question.
+# Rasa CALM keeps its place in a flow on the dialogue stack; a custom action can
+# update the stack with a JSON-patch "stack" event (the same event Rasa itself uses).
+# ---------------------------------------------------------------------------
+GO_BACK_STEPS = {
+    # every step id in order, with the slot each collect step fills (None for other steps)
+    "create_event": [
+        ("ask_title", "event_title"), ("ask_date", "event_date"), ("ask_time", "event_time"),
+        ("ask_location", "event_location"), ("ask_host", "event_host"), ("ask_description", "event_description"),
+        ("review", None), ("ask_confirmation", "event_confirmation"),
+    ],
+    "onboarding_survey": [
+        ("ask_hobbies", "hobbies"), ("ask_partner_activities", "partner_activities"), ("ask_interests", "interests"),
+        ("ask_preferred_times", "preferred_times"), ("ask_preferred_group_size", "preferred_group_size"),
+        ("ask_travel_distance", "travel_distance"),
+    ],
+}
+
+
+def go_back_plan(stack: list[dict]) -> dict | None:
+    """Work out how to return to the previous question. Returns None when there is nothing to go back to."""
+    for index in range(len(stack) - 1, -1, -1):
+        frame = stack[index]
+        steps = GO_BACK_STEPS.get(frame.get("flow_id", ""))
+        if frame.get("type") != "flow" or not steps:
+            continue
+        ids = [step_id for step_id, _ in steps]
+        current = frame.get("step_id", "")
+        if current not in ids:
+            return {"frame": index, "first": True}
+        position = ids.index(current)
+        previous = [i for i in range(position) if steps[i][1]]
+        if not previous:
+            return {"frame": index, "first": True, "slot": steps[position][1]}
+        target = previous[-1]
+        return {
+            "frame": index,
+            "first": False,
+            "restart_after": ids[target - 1] if target > 0 else "START",
+            "clear": [slot for _, slot in steps[target:position + 1] if slot],
+            "question_slot": steps[target][1],
+        }
+    return None
+
+
+class ActionGoBack(Action):
+    def name(self) -> str:
+        return "action_go_back"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        import json
+
+        stack = list(getattr(tracker, "stack", None) or [])
+        plan = go_back_plan(stack)
+        if not plan:
+            dispatcher.utter_message(text=t(tracker, "go_back_nothing"))
+            return []
+        if plan["first"]:
+            dispatcher.utter_message(text=t(tracker, "go_back_first"))
+            return []
+        frame = plan["frame"]
+        # Drop pending "ask the next question" frames above the flow (not the running go_back frame on top).
+        removable = [i for i in range(frame + 1, len(stack) - 1) if stack[i].get("type") == "pattern_collect_information"]
+        patch = [{"op": "remove", "path": f"/{i}"} for i in sorted(removable, reverse=True)]
+        patch.append({"op": "replace", "path": f"/{frame}/step_id", "value": plan["restart_after"]})
+        dispatcher.utter_message(text=t(tracker, "go_back_ok"))
+        return [{"event": "stack", "update": json.dumps(patch)}] + [SlotSet(slot, None) for slot in plan["clear"]]
 
 
 class ActionSkipQuestion(Action):

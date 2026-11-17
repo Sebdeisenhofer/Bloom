@@ -1,0 +1,18 @@
+version: "3.1"
+
+# Deterministic shortcuts that don't need the LLM. KeywordIntentClassifier matches these
+# phrases anywhere in a message; the go_back flow is triggered by this intent (nlu_trigger).
+nlu:
+  - intent: go_back
+    examples: |
+      - go back
+      - previous question
+      - last question
+      - change my last answer
+      - change my answer
+      - undo that
+      - back up
+      - pregunta anterior
+      - volver atrás
+      - regresar
+      - cambiar mi respuesta

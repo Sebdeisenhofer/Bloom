@@ -14,17 +14,23 @@ flows:
   onboarding_survey:
     description: Learn a visitor's activity preferences the first time they visit.
     steps:
-      - collect: hobbies
+      - id: ask_hobbies
+        collect: hobbies
         description: Hobbies or things the visitor enjoys doing for fun.
-      - collect: partner_activities
+      - id: ask_partner_activities
+        collect: partner_activities
         description: Whether they want activities to do with a partner or spouse.
-      - collect: interests
+      - id: ask_interests
+        collect: interests
         description: Types of community events that interest the visitor.
-      - collect: preferred_times
+      - id: ask_preferred_times
+        collect: preferred_times
         description: Preferred time of day for activities.
-      - collect: preferred_group_size
+      - id: ask_preferred_group_size
+        collect: preferred_group_size
         description: Whether the visitor prefers small or large groups.
-      - collect: travel_distance
+      - id: ask_travel_distance
+        collect: travel_distance
         description: How far the visitor is willing to travel.
       - action: action_save_profile
       - action: utter_welcome_back
@@ -32,21 +38,29 @@ flows:
   create_event:
     description: Help a community member post an event, confirm it, then save it.
     steps:
-      - collect: event_title
+      - id: ask_title
+        collect: event_title
         description: The event name or title.
-      - collect: event_date
+      - id: ask_date
+        collect: event_date
         description: The event date or day.
-      - collect: event_time
+      - id: ask_time
+        collect: event_time
         description: The start time of the event.
-      - collect: event_location
+      - id: ask_location
+        collect: event_location
         description: The address, venue, or meeting place.
-      - collect: event_host
+      - id: ask_host
+        collect: event_host
         description: The host's name.
-      - collect: event_description
+      - id: ask_description
+        collect: event_description
         description: An optional short description of the event. If the user says skip, no, or none, set it to "skip".
         ask_before_filling: true
-      - action: action_review_event
-      - collect: event_confirmation
+      - id: review
+        action: action_review_event
+      - id: ask_confirmation
+        collect: event_confirmation
         description: The user's yes or no answer to posting the event. Set "yes" for yes, yeah, sure, yep; "no" for no, nope.
         ask_before_filling: true
         next:
@@ -100,8 +114,15 @@ flows:
     steps:
       - action: utter_help
 
+  go_back:
+    description: Go back to the previous question in the current task so the visitor can change their last answer. Use for "go back", "previous question", "back", "undo", "wait, change my last answer". Not for cancelling.
+    nlu_trigger:
+      - intent: go_back
+    steps:
+      - action: action_go_back
+
   cancel:
-    description: Stop the current task when the visitor asks to cancel or go back.
+    description: Stop the current task completely when the visitor asks to cancel, stop, or quit.
     steps:
       - action: action_cancel_flow
 
@@ -139,6 +160,13 @@ flows:
     name: pattern skip question
     steps:
       - action: action_skip_question
+
+  pattern_continue_interrupted:
+    description: Resume the interrupted task right away (the assistant already said what is happening).
+    name: pattern continue interrupted
+    steps:
+      - noop: true
+        next: END
 
   pattern_completed:
     description: Finish a completed task without an extra prompt.

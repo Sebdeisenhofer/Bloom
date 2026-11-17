@@ -1,5 +1,9 @@
 version: "3.1"
 
+intents:
+  - go_back
+  - set_language
+
 session_config:
   session_expiration_time: 1440
   carry_over_slots_to_new_session: true
@@ -121,6 +125,8 @@ responses:
     - text: "That’s okay. I’ve stopped that for now. What would you like to do instead?"
   utter_goodbye:
     - text: "Take care. I’m here whenever you’d like to find something to do."
+  utter_flow_continue_interrupted:
+    - text: "Okay, back to where we were."
   utter_fallback:
     - text: "I’m sorry, I didn’t quite get that. You can ask me to find events, tell you more, or help you post one."
 
@@ -141,3 +147,4 @@ actions:
   - validate_event_confirmation
   - validate_event_description
   - action_skip_question
+  - action_go_back

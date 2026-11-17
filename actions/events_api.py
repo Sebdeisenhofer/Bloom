@@ -7,11 +7,17 @@ so anything posted here is also searchable by the "Ask Bloom" assistant.
     POST   /api/events                -> create an event (signed-in accounts only)
     DELETE /api/events/<id>           -> remove an event you posted (signed in)
     POST   /api/events/<id>/report    -> flag a community event; hidden after REPORT_LIMIT reports
-    POST   /api/register              -> {username, password, profile?, saved?} -> {token, user}
-    POST   /api/login                 -> {username, password} -> {token, user}
+    POST   /api/register              -> {email, name, password, profile?} -> {token, user}
+    POST   /api/login                 -> {email, password} -> {token, user}
     POST   /api/logout                -> end this session
     GET    /api/me                    -> the signed-in account (profile, saved events)
     PUT    /api/me                    -> save {profile?, saved?}
+    GET    /api/saved?owner=          -> event ids this person saved (guest id or signed-in account)
+    POST   /api/saved                 -> {owner, event_id} save an event; DELETE /api/saved/<id>?owner= removes it
+    POST   /api/saved/merge           -> {from: guest_id} move a guest's saved events into the signed-in account
+    GET    /api/community?owner=      -> community posts (meetups, interest groups) with joins and comments
+    POST   /api/community             -> new post (signed in); POST /api/community/<id>/join toggles joining
+    POST   /api/community/<id>/comments -> add a comment (signed in); DELETE /api/community/<id> removes your post
     GET    /api/health                -> {"ok": true}
 
 Authentication: "Authorization: Bearer <token>". Passwords are stored as salted
@@ -29,7 +35,7 @@ import uuid
 import time as clock_time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from actions.actions import connect, initialize_database
 from actions import real_events
@@ -83,27 +89,68 @@ def migrate() -> None:
                 user_id TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS posts (
+                id INTEGER PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT NOT NULL DEFAULT '',
+                schedule TEXT NOT NULL DEFAULT '',
+                place TEXT NOT NULL DEFAULT '',
+                is_sample INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS post_joins (
+                post_id INTEGER NOT NULL,
+                owner TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY (post_id, owner)
+            );
+            CREATE TABLE IF NOT EXISTS post_comments (
+                id INTEGER PRIMARY KEY,
+                post_id INTEGER NOT NULL,
+                user_id TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             """
         )
-        # Ready-made demo account for presentations: username "demo", password "demo".
+        existing = {row["name"] for row in db.execute("PRAGMA table_info(accounts)")}
+        for name in ("email", "name"):
+            if name not in existing:
+                db.execute(f"ALTER TABLE accounts ADD COLUMN {name} TEXT NOT NULL DEFAULT ''")
+        # Older username-only accounts: their username doubles as the sign-in name.
+        db.execute("UPDATE accounts SET email = lower(username) WHERE email = '' AND username LIKE '%@%'")
+        # Ready-made demo account for presentations: demo@bloom.local / demo (username "demo" works too).
         if not db.execute("SELECT 1 FROM accounts WHERE username = 'demo'").fetchone():
-            create_account(db, "demo", "demo", DEMO_PROFILE, [])
+            create_account(db, "demo", "demo", DEMO_PROFILE, [], email="demo@bloom.local", name="Margaret")
+        db.execute("UPDATE accounts SET email = 'demo@bloom.local', name = 'Margaret' WHERE username = 'demo' AND email = ''")
+
+
+COMMUNITY_CATEGORIES = {
+    "language", "books", "gardening", "crafts", "walking", "fitness", "games", "music", "cooking", "faith",
+    "volunteering", "learning", "tech", "history", "social", "other",
+}
+
+
+def now_iso() -> str:
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def hash_password(password: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), PBKDF2_ROUNDS).hex()
 
 
-def create_account(db, username: str, password: str, profile: dict, saved: list) -> str:
+def create_account(db, username: str, password: str, profile: dict, saved: list, email: str = "", name: str = "") -> str:
     user_id = "acct-" + uuid.uuid4().hex
     salt = secrets.token_hex(16)
     db.execute(
-        "INSERT INTO accounts (user_id, username, password_hash, salt, profile_json, saved_json, created_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO accounts (user_id, username, password_hash, salt, profile_json, saved_json, created_at, email, name) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (user_id, username, hash_password(password, salt), salt, json.dumps(profile), json.dumps(saved),
-         datetime.now().isoformat(timespec="seconds")),
+         datetime.now().isoformat(timespec="seconds"), email, name),
     )
-    sync_member(db, user_id, profile, username)
+    sync_member(db, user_id, profile, name or username)
     return user_id
 
 
@@ -123,6 +170,8 @@ def account_json(row) -> dict:
     return {
         "id": row["user_id"],
         "username": row["username"],
+        "email": row["email"],
+        "name": row["name"],
         "profile": json.loads(row["profile_json"] or "{}"),
         "saved": json.loads(row["saved_json"] or "[]"),
     }
@@ -140,6 +189,10 @@ def clean_profile(value) -> dict:
         "transport": words("transport"), "days": words("days"), "times": words("times"),
         "group": text("group", 20), "needs": words("needs"), "notes": text("notes", 500),
         "completed": bool(value.get("completed")),
+        "reminderEmail": text("reminderEmail", 120) if EMAIL_RE.match(text("reminderEmail", 120)) else "",
+        "phone": re.sub(r"[^0-9+]", "", text("phone", 30))[:16],
+        "reminderTiming": text("reminderTiming", 4) if text("reminderTiming", 4) in ("1d", "2h") else "1d",
+        "language": text("language", 5) if text("language", 5) in ("en", "es") else "en",
     }
 
 
@@ -264,6 +317,16 @@ class Handler(BaseHTTPRequestHandler):
             with connect() as db:
                 account = self.session_user(db)
             return self.send(200, {"user": account_json(account)}) if account else self.send(401, {"error": "Please log in."})
+        query = parse_qs(urlparse(self.path).query)
+        owner = clean((query.get("owner") or [""])[0], 80)
+        if path == "/api/saved":
+            with connect() as db:
+                if not self.owner_ok(db, owner):
+                    return self.send(403, {"error": "Not allowed."})
+                ids = [r[0] for r in db.execute("SELECT event_id FROM rsvps WHERE user_id = ? ORDER BY created_at", (owner,))]
+            return self.send(200, {"saved": ids})
+        if path == "/api/community":
+            return self.list_posts(owner)
         if path != "/api/events":
             return self.send(404, {"error": "Not found"})
         with connect() as db:
@@ -284,6 +347,38 @@ class Handler(BaseHTTPRequestHandler):
         body = self.read_json()
         if body is None:
             return self.send(400, {"error": "Something went wrong reading that. Please try again."})
+        if path == "/api/saved":
+            with connect() as db:
+                owner = clean(body.get("owner"), 80)
+                if not self.owner_ok(db, owner):
+                    return self.send(403, {"error": "Not allowed."})
+                try:
+                    event_id = int(body.get("event_id"))
+                except (TypeError, ValueError):
+                    return self.send(400, {"error": "Missing event."})
+                if not db.execute("SELECT 1 FROM events WHERE id = ?", (event_id,)).fetchone():
+                    return self.send(404, {"error": "That event is no longer listed."})
+                db.execute("INSERT OR IGNORE INTO rsvps (user_id, event_id) VALUES (?, ?)", (owner, event_id))
+            return self.send(200, {"saved": True})
+        if path == "/api/saved/merge":
+            with connect() as db:
+                account = self.session_user(db)
+                guest = clean(body.get("from"), 80)
+                if not account or not guest.startswith("bloom-"):
+                    return self.send(400, {"error": "Nothing to merge."})
+                db.execute("INSERT OR IGNORE INTO rsvps (user_id, event_id, created_at) "
+                           "SELECT ?, event_id, created_at FROM rsvps WHERE user_id = ?", (account["user_id"], guest))
+                db.execute("DELETE FROM rsvps WHERE user_id = ?", (guest,))
+                ids = [r[0] for r in db.execute("SELECT event_id FROM rsvps WHERE user_id = ?", (account["user_id"],))]
+            return self.send(200, {"saved": ids})
+        if path == "/api/community":
+            return self.create_post(body)
+        join = re.fullmatch(r"/api/community/(\d+)/join", path)
+        if join:
+            return self.toggle_join(int(join.group(1)), clean(body.get("owner"), 80))
+        comment = re.fullmatch(r"/api/community/(\d+)/comments", path)
+        if comment:
+            return self.add_comment(int(comment.group(1)), body)
         if path == "/api/register":
             return self.register(body)
         if path == "/api/login":
@@ -315,29 +410,115 @@ class Handler(BaseHTTPRequestHandler):
             row = db.execute("SELECT * FROM events WHERE id = ?", (cursor.lastrowid,)).fetchone()
         self.send(201, {"event": to_json(row)})
 
+    def owner_ok(self, db, owner: str) -> bool:
+        """Guests act under their own random "bloom-…" id; account ids need that account's session."""
+        if owner.startswith("acct-"):
+            account = self.session_user(db)
+            return bool(account and account["user_id"] == owner)
+        return owner.startswith("bloom-") and 10 <= len(owner) <= 80
+
+    # ---- community feed -------------------------------------------------
+    def list_posts(self, owner: str) -> None:
+        with connect() as db:
+            posts = [dict(r) for r in db.execute(
+                "SELECT p.*, COALESCE(m.name, 'A Bloom neighbor') AS poster_name, "
+                "  (SELECT COUNT(*) FROM post_joins j WHERE j.post_id = p.id) AS joins, "
+                "  EXISTS(SELECT 1 FROM post_joins j WHERE j.post_id = p.id AND j.owner = ?) AS joined "
+                "FROM posts p LEFT JOIN members m ON m.user_id = p.user_id ORDER BY p.created_at DESC LIMIT 200",
+                (owner,),
+            )]
+            comments = {}
+            for c in db.execute(
+                "SELECT c.*, COALESCE(m.name, 'A Bloom neighbor') AS name FROM post_comments c "
+                "LEFT JOIN members m ON m.user_id = c.user_id ORDER BY c.created_at"
+            ):
+                comments.setdefault(c["post_id"], []).append({
+                    "id": c["id"], "name": c["name"], "body": c["body"], "createdAt": c["created_at"],
+                    "mine": c["user_id"] == owner,
+                })
+        self.send(200, {"posts": [{
+            "id": p["id"], "category": p["category"], "title": p["title"], "body": p["body"],
+            "schedule": p["schedule"], "place": p["place"], "createdAt": p["created_at"],
+            "posterName": p["poster_name"], "mine": p["user_id"] == owner, "sample": bool(p["is_sample"]),
+            "joins": p["joins"], "joined": bool(p["joined"]), "comments": comments.get(p["id"], []),
+        } for p in posts]})
+
+    def create_post(self, body: dict) -> None:
+        with connect() as db:
+            account = self.session_user(db)
+            if not account:
+                return self.send(401, {"error": "Please create a free account or log in to start a group, so neighbors know who is organizing it."})
+            title = clean(body.get("title"), 100)
+            category = clean(body.get("category"), 20)
+            if not title:
+                return self.send(400, {"error": "Please give your group or meetup a name."})
+            if category not in COMMUNITY_CATEGORIES:
+                category = "other"
+            cursor = db.execute(
+                "INSERT INTO posts (user_id, category, title, body, schedule, place, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (account["user_id"], category, title, clean(body.get("body"), 1000), clean(body.get("schedule"), 120),
+                 clean(body.get("place"), 140), now_iso()),
+            )
+        self.send(201, {"id": cursor.lastrowid})
+
+    def toggle_join(self, post_id: int, owner: str) -> None:
+        with connect() as db:
+            if not self.owner_ok(db, owner):
+                return self.send(403, {"error": "Not allowed."})
+            if not db.execute("SELECT 1 FROM posts WHERE id = ?", (post_id,)).fetchone():
+                return self.send(404, {"error": "That group was removed."})
+            if db.execute("DELETE FROM post_joins WHERE post_id = ? AND owner = ?", (post_id, owner)).rowcount:
+                joined = False
+            else:
+                db.execute("INSERT INTO post_joins (post_id, owner, created_at) VALUES (?, ?, ?)", (post_id, owner, now_iso()))
+                joined = True
+            joins = db.execute("SELECT COUNT(*) FROM post_joins WHERE post_id = ?", (post_id,)).fetchone()[0]
+        self.send(200, {"joined": joined, "joins": joins})
+
+    def add_comment(self, post_id: int, body: dict) -> None:
+        with connect() as db:
+            account = self.session_user(db)
+            if not account:
+                return self.send(401, {"error": "Please create a free account or log in to comment."})
+            text = clean(body.get("body"), 600)
+            if not text:
+                return self.send(400, {"error": "Please write a comment first."})
+            if not db.execute("SELECT 1 FROM posts WHERE id = ?", (post_id,)).fetchone():
+                return self.send(404, {"error": "That group was removed."})
+            db.execute("INSERT INTO post_comments (post_id, user_id, body, created_at) VALUES (?, ?, ?, ?)",
+                       (post_id, account["user_id"], text, now_iso()))
+        self.send(201, {"ok": True})
+
     def register(self, body: dict) -> None:
-        username = str(body.get("username") or "").strip()
+        email = str(body.get("email") or "").strip().lower()
+        name = clean(body.get("name"), 60)
         password = str(body.get("password") or "")
-        if not USERNAME_RE.match(username):
-            return self.send(400, {"error": "Usernames need 3 to 30 letters or numbers (no spaces). For example: margaret_h"})
+        if not EMAIL_RE.match(email) or len(email) > 120:
+            return self.send(400, {"error": "That email doesn’t look quite right. Please check it."})
+        if not name:
+            return self.send(400, {"error": "Please tell us what to call you."})
         if len(password) < 6:
             return self.send(400, {"error": "Please choose a password with at least 6 characters."})
         if len(password) > 200:
             return self.send(400, {"error": "That password is too long."})
         with connect() as db:
-            if db.execute("SELECT 1 FROM accounts WHERE username = ?", (username,)).fetchone():
-                return self.send(409, {"error": "That username is taken. Please try another."})
-            user_id = create_account(db, username, password, clean_profile(body.get("profile")), clean_saved(body.get("saved")))
+            if db.execute("SELECT 1 FROM accounts WHERE email = ? OR username = ?", (email, email)).fetchone():
+                return self.send(409, {"error": "There’s already an account with that email. Try logging in instead."})
+            profile = clean_profile(body.get("profile"))
+            profile["name"] = profile.get("name") or name
+            if not profile.get("email"):
+                profile["email"] = email
+            user_id = create_account(db, email, password, profile, [], email=email, name=name)
             account = db.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
             self.new_session(db, account)
 
     def login(self, body: dict) -> None:
-        username = str(body.get("username") or "").strip()
+        email = str(body.get("email") or body.get("username") or "").strip()
         password = str(body.get("password") or "")
         with connect() as db:
-            account = db.execute("SELECT * FROM accounts WHERE username = ?", (username,)).fetchone()
+            account = db.execute("SELECT * FROM accounts WHERE email = ? COLLATE NOCASE OR username = ?", (email, email)).fetchone()
             if not account or not hmac.compare_digest(hash_password(password, account["salt"]), account["password_hash"]):
-                return self.send(401, {"error": "That username and password don’t match. Please try again."})
+                return self.send(401, {"error": "That email and password don’t match. Please try again."})
             self.new_session(db, account)
 
     def do_PUT(self) -> None:
@@ -353,7 +534,9 @@ class Handler(BaseHTTPRequestHandler):
             if "profile" in body:
                 profile = clean_profile(body.get("profile"))
                 db.execute("UPDATE accounts SET profile_json = ? WHERE user_id = ?", (json.dumps(profile), account["user_id"]))
-                sync_member(db, account["user_id"], profile, account["username"])
+                sync_member(db, account["user_id"], profile, account["name"] or account["username"])
+                if profile.get("name"):
+                    db.execute("UPDATE accounts SET name = ? WHERE user_id = ?", (profile["name"], account["user_id"]))
             if "saved" in body:
                 db.execute("UPDATE accounts SET saved_json = ? WHERE user_id = ?",
                            (json.dumps(clean_saved(body.get("saved"))), account["user_id"]))
@@ -377,7 +560,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         parsed = urlparse(self.path)
-        match = re.fullmatch(r"/api/events/(\d+)", parsed.path.rstrip("/"))
+        path = parsed.path.rstrip("/")
+        saved = re.fullmatch(r"/api/saved/(\d+)", path)
+        if saved:
+            owner = clean((parse_qs(parsed.query).get("owner") or [""])[0], 80)
+            with connect() as db:
+                if not self.owner_ok(db, owner):
+                    return self.send(403, {"error": "Not allowed."})
+                db.execute("DELETE FROM rsvps WHERE user_id = ? AND event_id = ?", (owner, int(saved.group(1))))
+            return self.send(200, {"saved": False})
+        post = re.fullmatch(r"/api/community/(\d+)", path)
+        if post:
+            with connect() as db:
+                account = self.session_user(db)
+                if not account:
+                    return self.send(401, {"error": "Please log in."})
+                removed = db.execute("DELETE FROM posts WHERE id = ? AND user_id = ?", (int(post.group(1)), account["user_id"])).rowcount
+                if removed:
+                    db.execute("DELETE FROM post_joins WHERE post_id = ?", (int(post.group(1)),))
+                    db.execute("DELETE FROM post_comments WHERE post_id = ?", (int(post.group(1)),))
+            return self.send(200 if removed else 403, {"deleted": bool(removed)})
+        match = re.fullmatch(r"/api/events/(\d+)", path)
         if not match:
             return self.send(404, {"error": "Not found"})
         with connect() as db:
