@@ -1,119 +1,146 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="930" viewBox="0 0 1600 930" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#2f5d50"/>
     </marker>
+    <marker id="arrow-grey" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a7a5c"/>
+    </marker>
     <style>
       .box { fill: #ffffff; stroke: #2f5d50; stroke-width: 2.5; }
       .ext { fill: #fbe7ec; stroke: #c4607a; stroke-width: 2.5; }
+      .opt { fill: #f5f1ea; stroke: #8a7a5c; stroke-width: 2.5; stroke-dasharray: 8 6; }
       .db { fill: #fff8e3; stroke: #b8962e; stroke-width: 2.5; }
-      .h { font-size: 21px; font-weight: 700; fill: #1f4238; }
-      .t { font-size: 15.5px; fill: #33433e; }
-      .s { font-size: 14px; fill: #4a5a55; font-style: italic; }
-      .lbl { font-size: 14px; font-weight: 600; fill: #1f4238; }
+      .h { font-size: 20px; font-weight: 700; fill: #1f4238; }
+      .t { font-size: 14.5px; fill: #33433e; }
+      .s { font-size: 13.5px; fill: #4a5a55; font-style: italic; }
+      .lbl { font-size: 13.5px; font-weight: 600; fill: #1f4238; }
       .line { stroke: #2f5d50; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #8a7a5c; stroke-width: 2.5; fill: none; stroke-dasharray: 8 6; marker-end: url(#arrow-grey); }
     </style>
   </defs>
 
-  <rect width="1600" height="900" fill="#faf6f0"/>
-  <text x="40" y="58" font-size="34" font-weight="700" fill="#1f4238" font-family="Georgia, 'Times New Roman', serif">Bloom: system architecture</text>
-  <text x="40" y="90" class="t">How a visitor’s browser, the Rasa CALM agent and the real Salem event feeds fit together.</text>
+  <rect width="1600" height="930" fill="#faf6f0"/>
+  <text x="40" y="56" font-size="32" font-weight="700" fill="#1f4238" font-family="Georgia, 'Times New Roman', serif">Bloom: system architecture</text>
+  <text x="40" y="86" class="t">Browser, Rasa CALM agent, events API with importer and reminders, all from one `docker compose up --build`.</text>
 
   <!-- Browser -->
-  <rect x="40" y="140" width="310" height="580" rx="22" class="box"/>
-  <text x="62" y="180" class="h">🧑‍🦳 Visitor’s browser</text>
-  <text x="62" y="208" class="s">Bloom web app (HTML, CSS, JavaScript)</text>
-  <text x="62" y="250" class="t">• Welcome: account or guest</text>
-  <text x="62" y="280" class="t">• Events board ranked by match</text>
-  <text x="62" y="310" class="t">  (nothing is hidden)</text>
-  <text x="62" y="340" class="t">• Search by words, kind, day</text>
-  <text x="62" y="370" class="t">• My profile and preferences</text>
-  <text x="62" y="400" class="t">• Saved events, Add to calendar</text>
-  <text x="62" y="430" class="t">• Share an event (guided form)</text>
-  <text x="62" y="460" class="t">• “Ask Bloom” chat</text>
-  <text x="62" y="510" class="lbl">Accessibility</text>
-  <text x="62" y="540" class="t">• Larger text, high contrast</text>
-  <text x="62" y="570" class="t">• Read aloud (with Stop)</text>
-  <text x="62" y="600" class="t">• Voice input in chat</text>
-  <text x="62" y="630" class="t">• Large touch targets</text>
-  <text x="62" y="680" class="s">Guests: answers stay on device.</text>
-  <text x="62" y="700" class="s">Accounts: synced on the server.</text>
+  <rect x="40" y="140" width="310" height="610" rx="22" class="box"/>
+  <text x="60" y="178" class="h">🧑‍🦳 Visitor’s browser</text>
+  <text x="60" y="204" class="s">HTML, CSS, JavaScript · English / Español</text>
+  <text x="60" y="242" class="t">• Welcome: account, log in or guest</text>
+  <text x="60" y="268" class="t">• Survey (interests, time of day…)</text>
+  <text x="60" y="300" class="lbl">Six tabs</text>
+  <text x="60" y="326" class="t">💬 Chat (Ask Bloom)</text>
+  <text x="60" y="352" class="t">📅 Events: filters, date groups,</text>
+  <text x="60" y="374" class="t">     place / ZIP + radius</text>
+  <text x="60" y="400" class="t">⭐ My Events: calendar, reminders</text>
+  <text x="60" y="426" class="t">🤝 Volunteer</text>
+  <text x="60" y="452" class="t">🏡 Community: groups, join, comment</text>
+  <text x="60" y="478" class="t">⚙️ Settings: language, text size…</text>
+  <text x="60" y="516" class="lbl">Accessibility</text>
+  <text x="60" y="542" class="t">• 60 px tabs, keyboard, ARIA</text>
+  <text x="60" y="568" class="t">• Larger text, high contrast</text>
+  <text x="60" y="594" class="t">• Read aloud + voice input (EN/ES)</text>
+  <text x="60" y="620" class="t">• Breadcrumbs, Back, “go back”</text>
+  <text x="60" y="664" class="s">.ics calendar files are made</text>
+  <text x="60" y="684" class="s">in the browser: no setup needed.</text>
 
   <!-- Server frame -->
-  <rect x="400" y="120" width="810" height="740" rx="26" fill="#e6efe9" stroke="#2f5d50" stroke-width="2" stroke-dasharray="10 7"/>
-  <text x="425" y="152" class="lbl">DigitalOcean server · Docker Compose · always on</text>
+  <rect x="400" y="115" width="810" height="750" rx="26" fill="#e6efe9" stroke="#2f5d50" stroke-width="2" stroke-dasharray="10 7"/>
+  <text x="422" y="145" class="lbl">Docker Compose (laptop or DigitalOcean server)</text>
 
-  <!-- Caddy -->
-  <rect x="430" y="175" width="320" height="95" rx="18" class="box"/>
-  <text x="452" y="210" class="h">🔒 Caddy</text>
-  <text x="452" y="238" class="t">Public HTTPS entry point</text>
-  <text x="452" y="258" class="t">(automatic certificate)</text>
+  <rect x="430" y="160" width="320" height="85" rx="18" class="box"/>
+  <text x="450" y="193" class="h">🔒 Caddy <tspan class="s">(public server only)</tspan></text>
+  <text x="450" y="221" class="t">HTTPS with an automatic certificate</text>
 
-  <!-- nginx -->
-  <rect x="430" y="320" width="320" height="115" rx="18" class="box"/>
-  <text x="452" y="355" class="h">🌐 nginx “web”</text>
-  <text x="452" y="383" class="t">Serves the web app; routes</text>
-  <text x="452" y="405" class="t">/webhooks → Rasa, /api → Events API</text>
+  <rect x="430" y="285" width="320" height="100" rx="18" class="box"/>
+  <text x="450" y="318" class="h">🌐 nginx “web” :8081</text>
+  <text x="450" y="344" class="t">Serves the website; routes</text>
+  <text x="450" y="366" class="t">/webhooks → Rasa · /api → Events API</text>
 
-  <!-- Events API -->
-  <rect x="430" y="500" width="320" height="165" rx="18" class="box"/>
-  <text x="452" y="535" class="h">📅 Events API (Python)</text>
-  <text x="452" y="563" class="t">• Events board, post, remove</text>
-  <text x="452" y="588" class="t">• Accounts (hashed passwords), reports</text>
-  <text x="452" y="613" class="t">• Imports real events every 3 h,</text>
-  <text x="452" y="638" class="t">  filters out kids/teen programs</text>
+  <rect x="430" y="425" width="320" height="195" rx="18" class="box"/>
+  <text x="450" y="458" class="h">📅 Events API (Python)</text>
+  <text x="450" y="486" class="t">• Events, accounts (hashed passwords)</text>
+  <text x="450" y="510" class="t">• Saved events, community feed</text>
+  <text x="450" y="534" class="t">• ZIP / town lookup (Census data)</text>
+  <text x="450" y="558" class="t">• Reminder job: every minute, sends</text>
+  <text x="450" y="580" class="t">  due email / text reminders</text>
+  <text x="450" y="604" class="s">calendar always · email · text (optional)</text>
 
-  <!-- Rasa -->
-  <rect x="860" y="175" width="320" height="140" rx="18" class="box"/>
-  <text x="882" y="210" class="h">💬 Rasa Pro CALM</text>
-  <text x="882" y="238" class="t">Flows: welcome, find events,</text>
-  <text x="882" y="261" class="t">post an event, help, cancel</text>
-  <text x="882" y="290" class="s">Manages the multi-turn conversation</text>
+  <rect x="430" y="655" width="320" height="150" rx="18" class="box"/>
+  <text x="450" y="688" class="h">🔄 Importer</text>
+  <text x="450" y="714" class="t">On start + every 3 hours: dedupe, tag,</text>
+  <text x="450" y="736" class="t">locate, filter out kids/teen programs</text>
+  <text x="450" y="760" class="t">Feed down or offline → labelled</text>
+  <text x="450" y="782" class="t">sample listings for that source</text>
 
-  <!-- Action server -->
-  <rect x="860" y="375" width="320" height="140" rx="18" class="box"/>
-  <text x="882" y="410" class="h">⚙️ Action server (Python)</text>
-  <text x="882" y="438" class="t">Search and rank events, load</text>
-  <text x="882" y="461" class="t">profile, check dates and yes/no,</text>
-  <text x="882" y="484" class="t">save posted events</text>
+  <rect x="860" y="160" width="320" height="135" rx="18" class="box"/>
+  <text x="880" y="193" class="h">💬 Rasa Pro CALM :5006</text>
+  <text x="880" y="219" class="t">Flows: find events, post an event,</text>
+  <text x="880" y="241" class="t">save + remind, go back, language</text>
+  <text x="880" y="263" class="t">Responses in English + Spanish</text>
+  <text x="880" y="285" class="s">keyword shortcuts: go back, remind me</text>
 
-  <!-- SQLite -->
-  <rect x="860" y="580" width="320" height="140" rx="18" class="db"/>
-  <text x="882" y="615" class="h">🗄️ SQLite database</text>
-  <text x="882" y="643" class="t">Events, accounts, sessions,</text>
-  <text x="882" y="666" class="t">RSVPs, reports</text>
-  <text x="882" y="696" class="s">Shared Docker volume (persists)</text>
+  <rect x="860" y="335" width="320" height="130" rx="18" class="box"/>
+  <text x="880" y="368" class="h">⚙️ Action server (Python)</text>
+  <text x="880" y="394" class="t">Rank by interests, source, distance;</text>
+  <text x="880" y="416" class="t">save events, reminders, go back</text>
+  <text x="880" y="438" class="t">(rewinds the dialogue stack)</text>
 
-  <!-- External: LLM -->
-  <rect x="1260" y="175" width="300" height="140" rx="18" class="ext"/>
-  <text x="1282" y="210" class="h">🧠 LLM command</text>
-  <text x="1282" y="236" class="h">    generator</text>
-  <text x="1282" y="266" class="t">Turns what people type into</text>
-  <text x="1282" y="289" class="t">Rasa commands (Rasa-hosted)</text>
+  <rect x="860" y="505" width="320" height="120" rx="18" class="db"/>
+  <text x="880" y="538" class="h">🗄️ SQLite (shared volume)</text>
+  <text x="880" y="564" class="t">events (source, links, lat/lon),</text>
+  <text x="880" y="586" class="t">accounts, saved, reminders,</text>
+  <text x="880" y="608" class="t">community posts, comments</text>
 
-  <!-- External: feeds -->
-  <rect x="1260" y="470" width="300" height="250" rx="18" class="ext"/>
-  <text x="1282" y="505" class="h">🌍 Public event feeds</text>
-  <text x="1282" y="545" class="t">• Salem Public Library</text>
-  <text x="1282" y="568" class="s">   LibCal iCal feed</text>
-  <text x="1282" y="603" class="t">• Willamette Bearcats home</text>
-  <text x="1282" y="626" class="t">   games <tspan class="s">(NWC iCal feed)</tspan></text>
-  <text x="1282" y="661" class="t">• Willamette Heritage Center</text>
-  <text x="1282" y="684" class="s">   calendar JSON feed</text>
+  <rect x="860" y="665" width="320" height="130" rx="18" class="box"/>
+  <text x="880" y="698" class="h">📬 MailHog :8025</text>
+  <text x="880" y="724" class="t">Demo inbox for reminder emails.</text>
+  <text x="880" y="746" class="t">Default SMTP target: no real</text>
+  <text x="880" y="768" class="t">credentials needed, nothing leaves.</text>
+
+  <!-- External -->
+  <rect x="1260" y="160" width="300" height="135" rx="18" class="ext"/>
+  <text x="1280" y="193" class="h">🧠 LLM command</text>
+  <text x="1280" y="217" class="h">     generator</text>
+  <text x="1280" y="247" class="t">Turns what people type into</text>
+  <text x="1280" y="269" class="t">Rasa commands (Rasa-hosted)</text>
+
+  <rect x="1260" y="325" width="300" height="245" rx="18" class="ext"/>
+  <text x="1280" y="358" class="h">🌍 Public event feeds</text>
+  <text x="1280" y="388" class="t">• Salem Public Library (iCal)</text>
+  <text x="1280" y="412" class="t">• Press Play Salem (calendar API)</text>
+  <text x="1280" y="436" class="t">• Dave in Salem (WordPress RSS)</text>
+  <text x="1280" y="460" class="t">• Willamette Heritage Center</text>
+  <text x="1280" y="484" class="t">• Willamette Bearcats (NWC iCal)</text>
+  <text x="1280" y="512" class="s">Center 50+, Deepwood, Lord &amp; Schryver,</text>
+  <text x="1280" y="532" class="s">Travel Salem, Elsinore, Salem Art,</text>
+  <text x="1280" y="552" class="s">Salem Reporter: sample listings</text>
+
+  <rect x="1260" y="605" width="300" height="160" rx="18" class="opt"/>
+  <text x="1280" y="638" class="h">✉️ Real email / 💬 texts</text>
+  <text x="1280" y="664" class="t">Your SMTP server and Twilio,</text>
+  <text x="1280" y="686" class="t">used only when set in .env.</text>
+  <text x="1280" y="714" class="s">Missing keys → “Text reminders</text>
+  <text x="1280" y="734" class="s">not configured”; app keeps working.</text>
 
   <!-- Arrows -->
-  <path class="line" d="M350,222 L428,222"/>
-  <text x="352" y="246" font-size="12.5" font-weight="700" fill="#1f4238">HTTPS</text>
-  <path class="line" d="M590,270 L590,318"/>
-  <path class="line" d="M750,360 C805,360 805,245 858,245"/>
-  <text x="770" y="300" class="lbl">chat</text>
-  <path class="line" d="M590,435 L590,498"/>
-  <text x="600" y="472" class="lbl">events, profiles</text>
-  <path class="line" d="M1020,315 L1020,373"/>
-  <text x="1030" y="350" class="lbl">custom actions</text>
-  <path class="line" d="M1180,245 L1258,245"/>
-  <path class="line" d="M1020,515 L1020,578"/>
-  <path class="line" d="M750,630 L858,650"/>
-  <path class="line" d="M1410,720 L1410,800 L590,800 L590,667"/>
-  <text x="640" y="790" class="lbl">imported every 3 hours (no API keys needed)</text>
+  <path class="line" d="M350,205 L428,205"/>
+  <text x="354" y="196" font-size="12.5" font-weight="700" fill="#1f4238">HTTPS</text>
+  <path class="line" d="M590,245 L590,283"/>
+  <path class="line" d="M750,318 C805,318 805,228 858,228"/>
+  <text x="770" y="280" class="lbl">chat</text>
+  <path class="line" d="M590,385 L590,423"/>
+  <path class="line" d="M1020,295 L1020,333"/>
+  <text x="1030" y="320" class="lbl">custom actions</text>
+  <path class="line" d="M1180,228 L1258,228"/>
+  <path class="line" d="M1020,465 L1020,503"/>
+  <path class="line" d="M750,500 L858,548"/>
+  <path class="line" d="M750,700 L858,600"/>
+  <path class="line" d="M750,595 L858,715"/>
+  <path class="dash" d="M750,462 L830,462 L830,842 L1410,842 L1410,767"/>
+  <text x="900" y="834" font-size="13" font-weight="600" fill="#6b5d40">or real SMTP / Twilio when configured</text>
+  <path class="line" d="M1560,447 L1585,447 L1585,895 L590,895 L590,807"/>
+  <text x="640" y="886" class="lbl">imported on start and every 3 hours (respecting robots.txt)</text>
 </svg>

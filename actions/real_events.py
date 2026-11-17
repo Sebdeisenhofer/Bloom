@@ -586,7 +586,7 @@ def refresh(loaders=None) -> dict:
         db.execute(f"DELETE FROM events WHERE is_sample = 1 AND external_id NOT IN ({', '.join('?' for _ in keep)})", keep)
         for src in {r["source"] for r in samples}:
             if src in SOURCES and SOURCES[src]["feed"]:
-                counts[src] = f"{counts.get(src, 0)} live, using samples"
+                counts[src] = "error, using samples" if counts.get(src) == "error" else f"{counts.get(src, 0)} live, using samples"
     print(f"real-events: refreshed {counts}", flush=True)
     return counts
 
