@@ -850,6 +850,7 @@
   function setLanguage(code) {
     if (code === I.lang) return;
     I.set(code);
+    if (profile) { profile.language = code; persistProfile(); }
     languageSentToBot = false;
     buildAllChoices();
     applyDisplay();
@@ -1580,6 +1581,7 @@
       try { applyAccount((await api("/api/me")).user); } catch (e) { /* offline or logged out */ }
     }
     route();
+    if (profile && profile.language && profile.language !== I.lang) setLanguage(profile.language);
     await loadEvents();
     await loadSaved();
     rerender();
