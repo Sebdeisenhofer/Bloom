@@ -206,6 +206,28 @@ class ReminderTests(TempDb):
         self.assertEqual(len(dispatcher.messages[0]["buttons"]), 2)
 
 
+class LlmFallbackTests(TempDb):
+    """When the shared LLM is busy, common requests still work from keywords."""
+
+    def run_fallback(self, text):
+        dispatcher = Dispatcher()
+        actions.ActionLlmFallback().run(dispatcher, Tracker(text=text), {})
+        return dispatcher.messages
+
+    def test_search_still_returns_events(self):
+        first = self.run_fallback("Find gardening events")[0]
+        self.assertIn(first["json_message"]["events"][0]["source"], ("deepwood", "lordschryver", "daveinsalem"))
+
+    def test_details_and_help(self):
+        with actions.connect() as db:
+            event_id = db.execute("SELECT id FROM events LIMIT 1").fetchone()[0]
+        self.assertIn("buttons", self.run_fallback(f"Tell me more about event {event_id}")[0])
+        self.assertEqual(self.run_fallback("what can you do?")[0]["response"], "utter_help")
+
+    def test_unrelated_message_gets_the_apology(self):
+        self.assertEqual(self.run_fallback("hello there")[0]["response"], "utter_internal_error_rasa")
+
+
 class SpanishTests(TempDb):
     def test_language_switch_sets_the_slot(self):
         events = actions.ActionSetLanguage().run(Dispatcher(), Tracker(text='/set_language{"lang":"es"}', entities=[{"entity": "lang", "value": "es"}]), {})

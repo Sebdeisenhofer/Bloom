@@ -893,6 +893,40 @@ class ActionSearchEvents(Action):
         return []
 
 
+SEARCH_WORDS = re.compile(
+    r"\b(find|show|search|look(ing)? for|events?|happening|what'?s on|things to do|activit|classes?|"
+    r"volunteer|near|within|this week|weekend|today|tomorrow|tonight|busca|buscar|eventos?|actividad|"
+    r"voluntari|cerca|hoy|mañana|semana)", re.I)
+HELP_WORDS = re.compile(r"\b(help|what can you do|how does this work|ayuda|qué puede)", re.I)
+SAVE_WORDS = re.compile(r"\b(save|rsvp|attend|i'?d like to go|guardar|guarde|asistir)\b", re.I)
+
+
+class ActionLlmFallback(Action):
+    """Runs when the LLM command generator errors (e.g. the shared endpoint is rate limited).
+
+    Instead of only apologising, answer the common requests deterministically from the message text,
+    so the chat keeps working while the LLM is unavailable.
+    """
+
+    def name(self) -> str:
+        return "action_llm_fallback"
+
+    def run(self, dispatcher: CollectingDispatcher, tracker: Tracker, domain: dict) -> list:
+        text = (tracker.latest_message.get("text") or "").strip()
+        if text and not text.startswith("/"):
+            if re.search(r"\b(tell me (more )?about|more about|details|cuénteme|más sobre)\b", text, re.I) and find_event_in_text(text, None):
+                return ActionGetEventDetails().run(dispatcher, tracker, domain)
+            if SAVE_WORDS.search(text) and find_event_in_text(text, tracker.get_slot("selected_event_id")):
+                return ActionSaveRsvp().run(dispatcher, tracker, domain)
+            if HELP_WORDS.search(text):
+                dispatcher.utter_message(response="utter_help")
+                return []
+            if SEARCH_WORDS.search(text) or tag_keys(text) or search_location(text):
+                return ActionSearchEvents().run(dispatcher, tracker, domain)
+        dispatcher.utter_message(response="utter_internal_error_rasa")
+        return []
+
+
 class ActionGetEventDetails(Action):
     def name(self) -> str:
         return "action_get_event_details"

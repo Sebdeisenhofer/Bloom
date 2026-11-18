@@ -141,6 +141,12 @@ flows:
     steps:
       - action: action_handle_free_text
 
+  pattern_internal_error:
+    description: When the LLM is unavailable (for example the shared endpoint is busy), still answer searches, event details, saves and help from keywords.
+    name: pattern internal error
+    steps:
+      - action: action_llm_fallback
+
   pattern_cannot_handle:
     description: Respond warmly when a request is unclear.
     name: pattern cannot handle

@@ -226,3 +226,4 @@ actions:
   - action_go_back
   - action_set_reminder
   - action_set_language
+  - action_llm_fallback
