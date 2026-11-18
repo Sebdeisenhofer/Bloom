@@ -1481,6 +1481,8 @@
   }
   function displayResponses(responses) {
     quickReplies.replaceChildren();
+    // Answer buttons live inside the conversation (they scroll with it) so they never squeeze the chat.
+    messages.querySelectorAll(".message-buttons").forEach(function (g) { g.remove(); });
     const failed = (responses || []).some(function (r) { return r.text && /trouble with that/i.test(r.text); });
     if (!responses || !responses.length || failed) { offlineReply(); return; }
     responses.forEach(function (r) {
@@ -1490,13 +1492,15 @@
         if (window.BloomReminders) window.BloomReminders.reload();
         loadEvents().then(loadSaved).then(rerender);
       }
+      const group = (r.buttons || []).length ? el("div", "message-buttons") : null;
+      if (group) { group.setAttribute("role", "group"); group.setAttribute("aria-label", t("chat.choices")); messages.appendChild(group); }
       (r.buttons || []).forEach(function (btn) {
         const about = /^(tell me about|cuéntame sobre)\s+/i.test(btn.title);
         const label = about ? "ℹ️ " + btn.title.replace(/^(tell me about|cuéntame sobre)\s+/i, "") : btn.title;
         const q = button("btn btn-secondary btn-chip" + (about ? " btn-chip-event" : ""), label, function () { sendMessage(btn.payload, false, btn.title); });
         q.title = btn.title;
         q.setAttribute("aria-label", btn.title);
-        quickReplies.appendChild(q);
+        group.appendChild(q);
       });
     });
     messages.scrollTop = messages.scrollHeight;

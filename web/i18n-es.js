@@ -389,6 +389,7 @@ window.BloomI18n.add("es", {
   "chat.speakNow": "Le escucho. Hable ahora.",
   "chat.check": "Revise sus palabras y toque Enviar.",
   "chat.notHeard": "No le escuché bien. Inténtelo de nuevo o escriba.",
+  "chat.choices": "Opciones",
   "chat.offline": "¡Perdón, tengo un problema para pensar en este momento! Mientras tanto, todos los eventos están en la pestaña Eventos, los mejores primero.",
   "chat.showEvents": "Ver eventos",
   "chat.q.week": "📅 Eventos de esta semana",

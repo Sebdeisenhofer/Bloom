@@ -405,6 +405,7 @@
     "chat.speakNow": "Listening. Speak now.",
     "chat.check": "Check your words, then press Send.",
     "chat.notHeard": "I couldn’t hear that. Try again or type instead.",
+    "chat.choices": "Choices",
     "chat.offline": "I’m having trouble thinking right now, sorry about that! In the meantime, every event is in the Events tab, best matches first.",
     "chat.showEvents": "Show events",
     "chat.q.week": "📅 Events this week",
