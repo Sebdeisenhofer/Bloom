@@ -8,6 +8,9 @@ services:
       TZ: America/Los_Angeles  # "today" means today in Salem
       # The chat can set reminders too; it only needs to know which channels are configured.
       SMTP_HOST: ${SMTP_HOST-mailhog}
+      # Optional: with an OpenAI key, event answers are written by an LLM from the retrieved listings (RAG).
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER:-}
@@ -57,6 +60,9 @@ services:
     environment:
       RASA_PRO_LICENSE: ${RASA_PRO_LICENSE:?Set RASA_PRO_LICENSE in .env}
       TZ: America/Los_Angeles
+      # Optional: your own OpenAI key makes the chat faster and more reliable than Rasa's shared endpoint.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
     depends_on:
       action-server:
         condition: service_healthy

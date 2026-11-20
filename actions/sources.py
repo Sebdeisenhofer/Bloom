@@ -181,6 +181,12 @@ SAMPLES = [
 ]
 
 
+def samples_enabled() -> bool:
+    """Invented sample listings are off unless BLOOM_SAMPLE_EVENTS=1 (unit tests and offline demos)."""
+    import os
+    return os.environ.get("BLOOM_SAMPLE_EVENTS", "0") == "1"
+
+
 def sample_rows(source: str | None = None, today: date | None = None) -> list[dict]:
     today = today or date.today()
     rows = []

@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("BLOOM_SAMPLE_EVENTS", "1")  # tests use the fixed sample listings
 import tempfile
 import unittest
 from pathlib import Path

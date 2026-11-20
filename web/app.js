@@ -25,7 +25,35 @@
   const SOURCE_FALLBACK = { library: ["Salem Public Library", "📚"], willamette: ["Willamette University", "🏀"],
     heritage: ["Willamette Heritage Center", "🏛"], community: ["Neighbors", "🏡"] };
   const intLabel = function (k) { return t("int." + k); };
-  const PAGE = 10;
+  const PAGE = 12;  // events per page
+  // Survey interests, organized so the list is quick to scan.
+  const INTEREST_GROUPS = [
+    ["survey.gOutdoors", ["gardening", "walking", "fitness", "sports"]],
+    ["survey.gArts", ["music", "crafts", "dancing", "movies"]],
+    ["survey.gLearning", ["books", "learning", "history", "language", "tech"]],
+    ["survey.gSocial", ["social", "games", "cooking", "faith", "volunteering", "family", "health"]]
+  ];
+  // A badge ("profile picture") for every organization Bloom lists, so people see where an event comes from.
+  const SOURCE_LOGOS = {
+    library: ["SPL", "#1d5c8c"], pressplay: ["PP", "#c2410c"], willamette: ["WU", "#9f1d35"], heritage: ["WHC", "#7c5a2b"],
+    daveinsalem: ["DS", "#2f7d4a"], center50: ["50+", "#6d4aa3"], deepwood: ["DW", "#3f6e3a"], lordschryver: ["L&S", "#55743c"],
+    elsinore: ["ET", "#7a1f4b"], salemart: ["SAA", "#b5446a"], travelsalem: ["TS", "#0f6b78"], salemreporter: ["SR", "#333f48"],
+    ticketmaster: ["TM", "#026cdf"], community: ["🏡", "#b8962e"]
+  };
+  // Calendars recommended by a local events blogger; most have no machine-readable feed, so Bloom links to them.
+  const REFERENCES = [
+    ["Press Play Salem", "https://pressplaysalem.com/calendar/"], ["Salem Art Association", "https://salemart.org/"],
+    ["Deepwood Museum & Gardens", "https://deepwoodmuseum.org/event-calendar/"], ["Willamette University Events", "https://events.willamette.edu/"],
+    ["Willamette University Theatre", "https://willamette.edu/arts/theatre/"], ["Hallie Ford Museum of Art", "https://willamette.edu/arts/hfma/events/index.html"],
+    ["Theatre 33", "https://theatre33.org/"], ["Willamette Heritage Center", "https://www.willametteheritage.org/calendar/"],
+    ["City of Salem (events, activities, public meetings)", "https://www.cityofsalem.net/"], ["Salem Public Library", "https://cityofsalemlibrary.libcal.com/calendar"],
+    ["Marion Soil & Water Conservation District", "https://www.marionswcd.net/events"], ["Salem Reporter events", "https://www.salemreporter.com/events/"],
+    ["Salem Reporter community events", "https://www.salemreporter.com/community-events/"], ["Elsinore Theatre", "https://elsinoretheatre.com/events/"],
+    ["Oregon Symphony", "https://www.orsymphony.org/concerts-tickets/calendar/"], ["Chemeketa Cellars", "https://www.chemeketacellars.com/events"],
+    ["Venti’s Cafe", "https://www.ventiscafe.com/"], ["City of Monmouth", "https://www.ci.monmouth.or.us/"],
+    ["Western Oregon University", "https://wou.edu/calendar/"], ["Albany River Rhythms", "https://www.riverrhythms.org/"],
+    ["City of Independence (River’s Edge Summer Series)", "https://www.ci.independence.or.us/"], ["Travel Salem", "https://www.travelsalem.com/events/"]
+  ];
 
   /* ------------------------------------------------------------------ *
    * Helpers
@@ -120,7 +148,6 @@
   let apiReachable = null;  // null = loading
   let config = { email: false, sms: false };
   let sortMode = "date";
-  let shownCount = PAGE;
   let readAloud = false;
   let display = load(DISPLAY_KEY, { size: "normal", contrast: false });
   let geo = null;           // resolved location filter {lat, lon, label} or {error}
@@ -343,6 +370,20 @@
     b.appendChild(el("span", "date-mon", d.toLocaleDateString(I.locale(), { month: "short" })));
     return b;
   }
+  function sourceLogo(ev) {
+    const known = SOURCE_LOGOS[ev.community ? "community" : ev.source];
+    const name = ev.community ? (ev.posterName || t("card.aNeighbor")) : ev.sourceName;
+    const initials = known ? known[0] : String(name || "?").split(/\s+/).map(function (w) { return w.charAt(0); }).join("").slice(0, 3).toUpperCase();
+    const logo = el("span", "src-logo", initials);
+    logo.style.background = known ? known[1] : "#4a5a55";
+    logo.setAttribute("aria-hidden", "true");
+    return logo;
+  }
+  function moreDates(m) {
+    const list = (m.repeats || []).slice(0, 4).map(shortDate).join(" · ");
+    const rest = (m.repeats || []).length - 4;
+    return list + (rest > 0 ? " " + t("card.andMore", { n: rest }) : "");
+  }
   function card(m, opts) {
     opts = opts || {};
     const ev = m.ev;
@@ -350,28 +391,25 @@
     const top = el("div", "card-top");
     top.appendChild(dateBlock(m.date));
     const head = el("div", "card-head");
-    const badges = el("div", "badges");
-    if (profile && profile.completed) badges.appendChild(el("span", "badge badge-" + m.level, t("card." + m.level)));
-    if (ev.mine) badges.appendChild(el("span", "badge badge-mine", t("card.mine")));
-    else if (ev.community) badges.appendChild(el("span", "badge badge-neighbor", t("card.neighbor", { name: ev.posterName || t("card.aNeighbor") })));
-    else badges.appendChild(el("span", "badge badge-source", ev.sourceIcon + " " + ev.sourceName));
-    if (ev.sample) badges.appendChild(el("span", "badge badge-sample", t("card.sample")));
-    head.appendChild(badges);
+    // Who it's from: the organization's badge and name (plus match level, when personalized).
+    const from = el("p", "card-source");
+    from.appendChild(sourceLogo(ev));
+    from.appendChild(el("span", "src-name", ev.community ? t("card.neighbor", { name: ev.posterName || t("card.aNeighbor") }) : ev.sourceName));
+    if (ev.mine) from.appendChild(el("span", "badge badge-mine", t("card.mine")));
+    if (profile && profile.completed && m.level !== "new") from.appendChild(el("span", "match match-" + m.level, t("card." + m.level)));
+    head.appendChild(from);
     head.appendChild(el("h3", null, ev.title));
-    const whenText = longDate(m.date) + " · " + timeRange(ev);
-    head.appendChild(el("p", "meta", "🗓 " + whenText));
-    head.appendChild(el("p", "meta", "📍 " + ev.place + (ev.area ? " (" + areaText(ev.area) + ")" : ev.city ? " (" + ev.city + ")" : "") +
-      (m.miles != null ? " · " + t("card.miles", { n: m.miles < 10 ? m.miles.toFixed(1) : Math.round(m.miles) }) : "")));
-    head.appendChild(el("p", "meta", "💵 " + (ev.cost || t("card.free"))));
-    const chips = el("div", "chips");
-    ev.tags.slice(0, 4).forEach(function (tag) { if (t("int." + tag) !== "int." + tag) chips.appendChild(el("span", "chip", intLabel(tag))); });
-    if (chips.children.length) head.appendChild(chips);
+    // Time and cost on one line; the date is in the date block (and the day heading) only.
+    head.appendChild(el("p", "meta", "🕑 " + timeRange(ev) + "  ·  💵 " + (ev.cost || t("card.free")) +
+      ((m.repeats || []).length ? "  ·  🔁 " + t("card.repeats") : "")));
+    head.appendChild(el("p", "meta", "📍 " + ev.place + (m.miles != null ? " · " + t("card.miles", { n: m.miles < 10 ? m.miles.toFixed(1) : Math.round(m.miles) }) : "")));
     top.appendChild(head);
     c.appendChild(top);
 
-    // Details (hidden until asked for, to keep the list calm)
+    // Everything else waits behind "More details", to keep cards small.
     const details = el("div", "details");
     details.hidden = true;
+    const whenText = longDate(m.date) + " · " + timeRange(ev);
     if (profile && profile.completed && (m.reasons.length || m.cautions.length)) {
       const why = el("div", "why");
       if (m.reasons.length) {
@@ -387,9 +425,10 @@
       }
       details.appendChild(why);
     }
-    if (ev.sample) details.appendChild(el("p", "sample-note", t("card.sampleNote", { source: ev.sourceName })));
-    details.appendChild(el("p", null, ev.desc));
-    details.appendChild(el("p", "meta", t("card.hostedBy", { host: ev.host })));
+    if (ev.desc) details.appendChild(el("p", null, ev.desc));
+    if ((m.repeats || []).length) details.appendChild(el("p", "meta", "🔁 " + t("card.alsoOn", { dates: moreDates(m) })));
+    if (ev.host) details.appendChild(el("p", "meta", t("card.hostedBy", { host: ev.host })));
+    if (ev.area || ev.city) details.appendChild(el("p", "meta", "🗺 " + (ev.area ? areaText(ev.area) : ev.city)));
     if (ev.community) {
       details.appendChild(el("p", "meta poster", "👤 " + (ev.posterName
         ? t(ev.posterEvents === 1 ? "card.sharedByOne" : "card.sharedBy", { name: ev.posterName, n: ev.posterEvents })
@@ -397,6 +436,8 @@
     }
     const access = ev.needs.map(function (n) { return t("need." + n); }).join(" · ");
     if (access) details.appendChild(el("p", "meta", "♿ " + access));
+    const tags = ev.tags.filter(function (tag) { return t("int." + tag) !== "int." + tag; }).slice(0, 4).map(intLabel);
+    if (tags.length) details.appendChild(el("p", "meta", "🏷 " + tags.join(" · ")));
     const extra = el("div", "card-actions");
     const listen = button("btn btn-ghost btn-small", t("card.listen"));
     listen.setAttribute("aria-pressed", "false");
@@ -408,6 +449,7 @@
     const cal = button("btn btn-ghost btn-small", t("card.calendar"));
     cal.setAttribute("aria-expanded", "false");
     extra.append(listen, cal);
+    if (ev.ticketUrl) extra.appendChild(link("btn btn-ghost btn-small", t("card.tickets"), ev.ticketUrl));
     if (ev.community && !ev.mine) extra.appendChild(button("btn btn-link report-link", t("card.report"), function () { reportEvent(ev); }));
     if (ev.mine) extra.appendChild(button("btn btn-link", t("card.remove"), function () { removeEvent(ev); }));
     details.appendChild(extra);
@@ -423,9 +465,9 @@
     // Main actions
     const actions = el("div", "card-actions");
     const isSaved = saved.has(ev.id);
-    const sv = button("btn " + (isSaved ? "btn-done" : "btn-primary"), isSaved ? t("card.saved") : t("card.save"), function () { toggleSaved(ev); });
+    const sv = button("btn btn-small " + (isSaved ? "btn-done" : "btn-primary"), isSaved ? t("card.saved") : t("card.save"), function () { toggleSaved(ev); });
     sv.setAttribute("aria-pressed", String(isSaved));
-    const more = button("btn btn-secondary", t("card.details"));
+    const more = button("btn btn-secondary btn-small", t("card.details"));
     more.setAttribute("aria-expanded", "false");
     more.addEventListener("click", function () {
       details.hidden = !details.hidden;
@@ -433,8 +475,7 @@
       more.textContent = details.hidden ? t("card.details") : t("card.lessDetails");
     });
     actions.append(sv, more);
-    if (ev.sourceUrl) actions.appendChild(link("btn btn-ghost", t("card.website"), ev.sourceUrl));
-    if (ev.ticketUrl) actions.appendChild(link("btn btn-ghost", t("card.tickets"), ev.ticketUrl));
+    if (ev.sourceUrl) actions.appendChild(link("btn btn-ghost btn-small", t("card.website"), ev.sourceUrl));
     c.appendChild(actions);
     if (opts.after) c.appendChild(opts.after(ev, m));
     return c;
@@ -458,11 +499,11 @@
   }
 
   // Groups cards under date headings ("Today · Monday, November 16").
-  function renderGrouped(container, matches, limit) {
+  function renderGrouped(container, matches, limit, from) {
     container.replaceChildren();
     let currentKey = "", group = null;
     const t0 = today0();
-    matches.slice(0, limit).forEach(function (m) {
+    matches.slice(from || 0, limit).forEach(function (m) {
       const key = m.ev.date;
       if (key !== currentKey) {
         currentKey = key;
@@ -477,10 +518,43 @@
       group.appendChild(card(m));
     });
   }
-  function showMoreButton(container, total, onMore) {
-    const left = total - shownCount;
-    if (left <= 0) return;
-    container.appendChild(button("btn btn-secondary show-more", t("events.showMore", { n: Math.min(PAGE, left), left: left }), onMore));
+  // Show each repeating listing once (weekly classes etc.), with its other dates under "More details".
+  function collapseRepeats(list) {
+    const seen = {}, out = [];
+    list.slice().sort(function (a, b) { return a.date - b.date; }).forEach(function (m) {
+      const k = (m.ev.source + "|" + m.ev.title).toLowerCase();
+      if (seen[k]) { seen[k].repeats.push(m.date); return; }
+      m.repeats = [];
+      seen[k] = m;
+      out.push(m);
+    });
+    return out;
+  }
+  // Numbered pages instead of endless scrolling.
+  let page = 0;
+  function renderPager(total) {
+    const nav = $("pager");
+    nav.replaceChildren();
+    const pages = Math.ceil(total / PAGE);
+    if (pages <= 1) return;
+    function goPage(n) { page = n; renderEvents(); $("list-title").scrollIntoView({ block: "start" }); }
+    const prev = button("btn btn-ghost btn-small", t("events.prev"), function () { goPage(page - 1); });
+    prev.disabled = page === 0;
+    nav.appendChild(prev);
+    for (let i = 0; i < pages; i++) {
+      if (pages > 7 && i > 1 && i < pages - 2 && Math.abs(i - page) > 1) {
+        if (!nav.lastChild.classList.contains("gap")) nav.appendChild(el("span", "gap", "…"));
+        continue;
+      }
+      const b = button("pill page-num", String(i + 1), function () { goPage(i); });
+      b.setAttribute("aria-pressed", String(i === page));
+      if (i === page) b.setAttribute("aria-current", "page");
+      b.setAttribute("aria-label", t("events.pageN", { n: i + 1, total: pages }));
+      nav.appendChild(b);
+    }
+    const next = button("btn btn-ghost btn-small", t("events.next"), function () { goPage(page + 1); });
+    next.disabled = page >= pages - 1;
+    nav.appendChild(next);
   }
 
   /* ------------------------------------------------------------------ *
@@ -532,6 +606,7 @@
     const days = Math.round((m.date - today0()) / 86400000);
     if (when === "today" && days !== 0) return false;
     if (when === "week" && days > 6) return false;
+    if (when === "month" && days > 30) return false;
     if (when === "weekend") {
       const toSat = (6 - today0().getDay() + 7) % 7;
       const dow = m.date.getDay();
@@ -555,77 +630,128 @@
     const part = t(h < 12 ? "events.greetingMorning" : h < 17 ? "events.greetingAfternoon" : "events.greetingEvening");
     return part + (displayName() ? ", " + displayName() : "") + " 🌸";
   }
+  // Category bar: one tap to narrow the list. Volunteering and neighbor groups live here too.
+  function renderCategoryBar(all) {
+    const bar = $("cat-bar");
+    bar.replaceChildren();
+    const kind = $("kind-filter").value;
+    function chip(label, active, onClick) {
+      const b = button("pill cat-chip", label, onClick);
+      b.setAttribute("aria-pressed", String(active));
+      bar.appendChild(b);
+    }
+    chip("✨ " + t("events.allKinds") + " (" + all.length + ")", !kind, function () { setKind(""); });
+    const count = function (k) { return all.filter(function (m) { return m.ev.tags.indexOf(k) !== -1; }).length; };
+    chip("🤝 " + t("tab.volunteer") + " (" + count("volunteering") + ")", kind === "volunteering", function () { setKind("volunteering"); });
+    chip("🏡 " + t("events.groups"), false, function () { go("community"); });
+    // Biggest categories first; the rest behind "More" so the bar stays one or two lines.
+    const cats = INTERESTS.filter(function (i) { return i[0] !== "volunteering" && count(i[0]); })
+      .sort(function (a, b) { return count(b[0]) - count(a[0]); });
+    cats.forEach(function (i, n) {
+      if (n >= 7 && !showAllCats && kind !== i[0]) return;
+      chip(i[1] + " " + intLabel(i[0]) + " (" + count(i[0]) + ")", kind === i[0], function () { setKind(i[0]); });
+    });
+    if (cats.length > 7) {
+      const more = button("btn btn-link cat-more", t(showAllCats ? "events.fewerCats" : "events.moreCats", { n: cats.length - 7 }), function () { showAllCats = !showAllCats; renderCategoryBar(all); });
+      more.setAttribute("aria-expanded", String(showAllCats));
+      bar.appendChild(more);
+    }
+  }
+  let showAllCats = false;
+  function setKind(k) {
+    $("kind-filter").value = k;
+    page = 0;
+    renderEvents();
+  }
+  function renderSources() {
+    const list = $("source-list");
+    list.replaceChildren();
+    const seen = {};
+    events.forEach(function (e) {
+      if (e.community || seen[e.source]) return;
+      seen[e.source] = 1;
+      const item = el("a", "source-item");
+      item.href = e.sourceUrl ? new URL(e.sourceUrl).origin : "#";
+      item.target = "_blank"; item.rel = "noopener noreferrer";
+      item.append(sourceLogo(e), el("span", null, e.sourceName));
+      list.appendChild(item);
+    });
+    const refs = $("ref-list");
+    if (!refs.children.length) REFERENCES.forEach(function (r) {
+      const li = el("li");
+      li.appendChild(link(null, r[0] + " ↗", r[1]));
+      refs.appendChild(li);
+    });
+  }
   function renderEvents() {
     const completed = profile && profile.completed;
     $("greeting").textContent = greetingText();
-    $("hero-sub").textContent = t(completed ? "events.sub" : "events.subGuest");
     $("edit-profile").hidden = !!completed;
     buildFilterOptions();
     $("date-filter").hidden = $("when-filter").value !== "pick";
     document.querySelectorAll("[data-sort]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.sort === sortMode)); });
 
-    const all = events.map(score);
+    const all = collapseRepeats(events.map(score));
+    renderCategoryBar(all);
     const filtering = filtersActive();
     const list = filtering ? all.filter(matchesFilters) : all;
     const byDate = function (a, b) { return a.date - b.date || b.score - a.score; };
     const byMatch = function (a, b) { return b.score - a.score || a.date - b.date; };
     const radius = Number($("radius-filter").value);
-    let near = null;
+    let ordered;
     if (geo && geo.lat != null) {
       const pts = geo.points || [[geo.lat, geo.lon]];  // regions ("the coast") measure to their nearest town
       list.forEach(function (m) {
         m.miles = m.ev.lat != null ? Math.min.apply(null, pts.map(function (p) { return haversine(p[0], p[1], m.ev.lat, m.ev.lon); })) : null;
       });
-      near = list.filter(function (m) { return m.miles != null && m.miles <= radius; });
-    }
-
-    // Top picks: only for a personalized, unfiltered view.
-    const picks = $("top-picks");
-    picks.replaceChildren();
-    const showPicks = completed && !filtering && all.length > 3;
-    $("picks-title").hidden = !showPicks;
-    picks.hidden = !showPicks;
-    if (showPicks) all.slice().sort(byMatch).slice(0, 3).forEach(function (m) { picks.appendChild(card(m, { featured: true })); });
-
-    const container = $("event-list");
-    let total;
-    if (near) {
       // Never hide: nearby events first, then everything else by distance.
+      const near = list.filter(function (m) { return m.miles != null && m.miles <= radius; }).sort(sortMode === "match" ? byMatch : byDate);
       const far = list.filter(function (m) { return near.indexOf(m) < 0; })
         .sort(function (a, b) { return (a.miles == null ? 1e9 : a.miles) - (b.miles == null ? 1e9 : b.miles); });
-      near.sort(sortMode === "match" ? byMatch : byDate);
-      total = near.length + far.length;
+      ordered = near.concat(far);
+      ordered.nearCount = near.length;
+    } else ordered = list.slice().sort(sortMode === "match" ? byMatch : byDate);
+
+    // Top picks: only for a personalized, unfiltered first page.
+    const picks = $("top-picks");
+    picks.replaceChildren();
+    const showPicks = completed && !filtering && page === 0 && all.length > 3;
+    $("picks-title").hidden = !showPicks;
+    picks.hidden = !showPicks;
+    if (showPicks) all.slice().sort(byMatch).slice(0, 4).forEach(function (m) { picks.appendChild(card(m, { featured: true })); });
+
+    const total = ordered.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE));
+    if (page >= pages) page = pages - 1;
+    const from = page * PAGE, to = from + PAGE;
+    const container = $("event-list");
+    if (ordered.nearCount != null) {
       container.replaceChildren();
-      const nearBox = el("section", "near-group");
-      nearBox.appendChild(el("h3", "group-heading", t("events.nearLabel", { place: geo.label }) + " · " + t("events.within", { n: radius }) + " (" + near.length + ")"));
-      const nearList = el("div", "event-groups");
-      nearBox.appendChild(nearList);
-      container.appendChild(nearBox);
-      renderGrouped(nearList, near, shownCount);
-      if (shownCount > near.length && far.length) {
-        const farBox = el("section", "near-group");
-        farBox.appendChild(el("h3", "group-heading", t("events.farther") + " (" + far.length + ")"));
-        const farList = el("div", "event-list");
-        far.slice(0, shownCount - near.length).forEach(function (m) { farList.appendChild(card(m)); });
-        farBox.appendChild(farList);
-        container.appendChild(farBox);
-      }
-    } else {
-      const ordered = list.slice().sort(sortMode === "match" ? byMatch : byDate);
-      total = ordered.length;
-      if (sortMode === "match") {
-        container.replaceChildren();
-        const flat = el("div", "event-list");
-        ordered.slice(0, shownCount).forEach(function (m) { flat.appendChild(card(m)); });
-        container.appendChild(flat);
-      } else renderGrouped(container, ordered, shownCount);
-    }
-    showMoreButton(container, total, function () { shownCount += PAGE; renderEvents(); });
+      const nearLabel = t("events.nearLabel", { place: geo.label }) + " · " + t("events.within", { n: radius }) + " (" + ordered.nearCount + ")";
+      const farLabel = t("events.farther") + " (" + (total - ordered.nearCount) + ")";
+      let grid = null;
+      if (from === 0 && ordered.nearCount === 0) container.appendChild(el("h3", "group-heading", nearLabel));
+      ordered.slice(from, to).forEach(function (m, i) {
+        const idx = from + i;
+        if (!grid || idx === ordered.nearCount) {
+          container.appendChild(el("h3", "group-heading", idx < ordered.nearCount ? nearLabel : farLabel));
+          grid = el("div", "event-list");
+          container.appendChild(grid);
+        }
+        grid.appendChild(card(m));
+      });
+    } else if (sortMode === "match") {
+      container.replaceChildren();
+      const flat = el("div", "event-list");
+      ordered.slice(from, to).forEach(function (m) { flat.appendChild(card(m)); });
+      container.appendChild(flat);
+    } else renderGrouped(container, ordered, to, from);
+    renderPager(total);
     if (apiReachable === null && !events.length) container.replaceChildren(el("p", "empty", t("events.loading")));
     if (apiReachable === false && !events.length) container.replaceChildren(el("p", "empty", t("events.offline")));
 
     $("list-title").textContent = t(filtering ? "events.matching" : "events.all");
-    $("event-count").textContent = t("events.count", { n: list.length });
+    $("event-count").textContent = total > PAGE ? t("events.pageOf", { from: from + 1, to: Math.min(to, total), total: total }) : t("events.count", { n: total });
     const st = $("search-status");
     st.hidden = !filtering;
     if (filtering) {
@@ -633,14 +759,12 @@
         (list.length ? t("events.showing", { n: list.length, total: all.length }) + " " : t("events.none") + " ")));
       st.appendChild(button("btn btn-link", t("events.clear"), clearFilters));
     }
-    const names = [];
-    events.forEach(function (e) { if (!e.community && names.indexOf(e.sourceName) < 0) names.push(e.sourceName); });
-    $("source-note").textContent = names.length ? t("events.sourceNote", { sources: names.join(", ") }) : "";
+    renderSources();
   }
   function clearFilters() {
     $("filters").reset();
     geo = null; geoQuery = "";
-    shownCount = PAGE;
+    page = 0;
     renderEvents();
     $("search-input").focus();
   }
@@ -648,19 +772,24 @@
   ["search-input", "place-filter"].forEach(function (id) {
     $(id).addEventListener("input", function () {
       clearTimeout(filterTimer);
-      filterTimer = setTimeout(async function () { shownCount = PAGE; await resolvePlace(); renderEvents(); }, 350);
+      filterTimer = setTimeout(async function () { page = 0; await resolvePlace(); renderEvents(); }, 350);
     });
   });
   ["kind-filter", "when-filter", "tod-filter", "source-filter", "date-filter", "radius-filter"].forEach(function (id) {
     $(id).addEventListener("change", function () {
-      shownCount = PAGE;
+      page = 0;
       renderEvents();
       if (id === "when-filter" && $(id).value === "pick") $("date-filter").focus();
     });
   });
+  $("filters-toggle").addEventListener("click", function () {
+    const box = $("more-filters");
+    box.hidden = !box.hidden;
+    $("filters-toggle").setAttribute("aria-expanded", String(!box.hidden));
+  });
   $("filters").addEventListener("submit", async function (e) { e.preventDefault(); await resolvePlace(); renderEvents(); });
   document.querySelectorAll("[data-sort]").forEach(function (b) {
-    b.addEventListener("click", function () { sortMode = b.dataset.sort; shownCount = PAGE; renderEvents(); });
+    b.addEventListener("click", function () { sortMode = b.dataset.sort; page = 0; renderEvents(); });
   });
 
   /* ------------------------------------------------------------------ *
@@ -694,13 +823,6 @@
     $("mine-channels").textContent = t("mine.calendarTip");
     updateSavedCount();
   }
-  function renderVolunteer() {
-    const vol = events.filter(function (ev) { return ev.tags.indexOf("volunteering") !== -1; }).map(score)
-      .sort(function (a, b) { return a.date - b.date || b.score - a.score; });
-    renderGrouped($("volunteer-list"), vol, vol.length);
-    $("volunteer-empty").hidden = vol.length > 0;
-  }
-
   /* ------------------------------------------------------------------ *
    * Community feed
    * ------------------------------------------------------------------ */
@@ -940,8 +1062,10 @@
   /* ------------------------------------------------------------------ *
    * Views, tabs, breadcrumbs, history
    * ------------------------------------------------------------------ */
-  const TABS = ["chat", "events", "my-events", "volunteer", "community", "settings"];
-  const VIEWS = ["welcome", "auth", "survey", "matching", "create"].concat(TABS.map(function (x) { return "panel-" + x; }));
+  const TABS = ["events", "my-events", "chat", "settings"];
+  const SUBPAGES = { community: "events", volunteer: "events" };  // pages that belong to a tab
+  const HOME = "events";
+  const VIEWS = ["welcome", "auth", "survey", "matching", "create", "terms", "panel-community"].concat(TABS.map(function (x) { return "panel-" + x; }));
   const tabKey = function (tab) { return "tab." + ({ "my-events": "myEvents" }[tab] || tab); };
   let currentView = "";
   function show(view) {
@@ -949,21 +1073,24 @@
     currentView = view;
     const inApp = view.indexOf("panel-") === 0 || view === "create";
     $("tabbar").hidden = !inApp;
-    $("crumbs").hidden = !inApp;
-    const tab = view === "create" ? "events" : view.replace("panel-", "");
+    $("crumbs").hidden = !inApp || view === "panel-" + HOME;
+    const page = view === "create" ? "events" : view.replace("panel-", "");
+    const tab = SUBPAGES[page] || page;
+    document.body.classList.toggle("on-chat", view === "panel-chat");
     document.querySelectorAll('[role="tab"]').forEach(function (b) {
       const on = b.dataset.tab === tab && inApp;
       b.setAttribute("aria-selected", String(on));
       b.tabIndex = on ? 0 : -1;
     });
-    if (inApp) renderCrumbs(tab, view === "create");
+    if (inApp) renderCrumbs(page, view === "create");
     window.scrollTo(0, 0);
   }
   function renderCrumbs(tab, sharing) {
     const ol = $("crumb-list");
     ol.replaceChildren();
-    const items = [[t("crumb.home"), "chat"], [t(tabKey(tab)), tab]];
-    if (tab === "chat") items.pop();
+    const items = [[t("crumb.home"), HOME]];
+    if (SUBPAGES[tab]) items.push([t(tabKey(SUBPAGES[tab])), SUBPAGES[tab]], [t(tab === "community" ? "events.groups" : tabKey(tab)), tab]);
+    else if (tab !== HOME) items.push([t(tabKey(tab)), tab]);
     if (sharing) items.push([t("crumb.share"), null]);
     items.forEach(function (it, i) {
       const li = el("li");
@@ -977,7 +1104,7 @@
       }
       ol.appendChild(li);
     });
-    $("crumb-back").hidden = tab === "chat" && !sharing;
+    $("crumb-back").hidden = tab === HOME && !sharing;
   }
   function go(tab) {
     if (location.hash !== "#" + tab) location.hash = tab; else route();
@@ -985,7 +1112,6 @@
   function renderTab(tab) {
     if (tab === "events") renderEvents();
     else if (tab === "my-events") renderMyEvents();
-    else if (tab === "volunteer") renderVolunteer();
     else if (tab === "community") { renderCommunity(); loadPosts().then(renderCommunity); }
     else if (tab === "settings") renderSettings();
     else if (tab === "chat") startChat();
@@ -1000,11 +1126,14 @@
     }
   }
   function route() {
-    const hash = location.hash.replace("#", "");
+    let hash = location.hash.replace("#", "");
+    if (hash === "terms") { show("terms"); $("terms-title").focus(); return; }
     if (!knownVisitor()) { showWelcome(); return; }
-    if (!profile) { openSurvey(TABS.indexOf(hash) >= 0 ? hash : "chat"); return; }
+    if (hash === "volunteer") { $("kind-filter").value = "volunteering"; hash = "events"; }
+    const known = TABS.indexOf(hash) >= 0 || SUBPAGES[hash];
+    if (!profile) { openSurvey(known ? hash : HOME); return; }
     if (hash === "share") { openCreate(); return; }
-    const tab = TABS.indexOf(hash) >= 0 ? hash : "chat";
+    const tab = known ? hash : HOME;
     show("panel-" + tab);
     renderTab(tab);
     if (readAloud) speak(t(tabKey(tab)));
@@ -1024,10 +1153,11 @@
       go(all[j].dataset.tab);
     });
   });
-  $("crumb-back").addEventListener("click", function () { if (history.length > 1) history.back(); else go("chat"); });
+  $("crumb-back").addEventListener("click", function () { if (history.length > 1) history.back(); else go(HOME); });
+  $("terms-back").addEventListener("click", function () { if (history.length > 1) history.back(); else { location.hash = ""; route(); } });
   $("brand-link").addEventListener("click", function (e) {
     e.preventDefault();
-    if (!knownVisitor()) showWelcome(); else go("chat");
+    if (!knownVisitor()) showWelcome(); else go(HOME);
   });
   $("saved-browse").addEventListener("click", function () { go("events"); });
 
@@ -1052,8 +1182,35 @@
       box.appendChild(label);
     });
   }
+  function buildInterestGroups() {
+    const box = $("interest-options");
+    const checked = Array.from(box.querySelectorAll("input:checked")).map(function (i) { return i.value; });
+    box.replaceChildren();
+    box.className = "interest-groups";
+    INTEREST_GROUPS.forEach(function (g, gi) {
+      const col = el("div", "interest-group");
+      const id = "int-group-" + gi;
+      const h = el("p", "interest-group-title", t(g[0]));
+      h.id = id;
+      col.appendChild(h);
+      const list = el("div", "interest-list");
+      list.setAttribute("role", "group");
+      list.setAttribute("aria-labelledby", id);
+      g[1].forEach(function (key) {
+        const icon = (INTERESTS.find(function (i) { return i[0] === key; }) || [key, "✨"])[1];
+        const label = el("label", "check-card");
+        const inp = document.createElement("input");
+        inp.type = "checkbox"; inp.name = "interests"; inp.value = key;
+        inp.checked = checked.indexOf(key) !== -1;
+        label.append(inp, el("span", "check-icon", icon), el("span", "check-text", intLabel(key)));
+        list.appendChild(label);
+      });
+      col.appendChild(list);
+      box.appendChild(col);
+    });
+  }
   function buildAllChoices() {
-    buildChoices("interest-options", "interests", INTERESTS, "int.", "checkbox", true);
+    buildInterestGroups();
     buildChoices("area-options", "area", AREAS, "area.", "radio");
     buildChoices("distance-options", "distance", DISTANCES, "dist.", "radio");
     buildChoices("transport-options", "transport", TRANSPORT, "trans.", "checkbox");
@@ -1074,7 +1231,7 @@
   const form = $("survey-form");
   const steps = Array.from(form.querySelectorAll(".step"));
   let step = 0;
-  let afterSurvey = "chat";
+  let afterSurvey = HOME;
   function showStep(n) {
     step = n;
     steps.forEach(function (s, i) { s.hidden = i !== n; });
@@ -1118,7 +1275,7 @@
     if (step < steps.length - 1) showStep(step + 1); else finishSurvey(readForm());
   });
   function openSurvey(returnTo) {
-    afterSurvey = returnTo || "chat";
+    afterSurvey = returnTo || HOME;
     fillForm(profile);
     show("survey");
     showStep(profile && profile.completed ? 1 : 0);
@@ -1130,7 +1287,7 @@
     show("matching");
     setTimeout(function () {
       const dest = afterSurvey;
-      afterSurvey = "chat";
+      afterSurvey = HOME;
       if (location.hash === "#" + dest) route(); else go(dest);
     }, p.completed ? 900 : 150);
   }
@@ -1174,10 +1331,50 @@
     save(KEY, profile);
     if (!(sp.completed || sp.name) && profile) queueSync();
   }
+  function paintAvatar(node) {
+    const pic = profile && profile.avatar;
+    node.replaceChildren();
+    node.classList.toggle("has-photo", !!pic);
+    if (pic) { const img = el("img"); img.src = pic; img.alt = ""; node.appendChild(img); }
+    else node.textContent = (displayName() || "🙂").trim().charAt(0).toUpperCase() || "🙂";
+  }
   function updateAccountUI() {
-    $("account-btn").textContent = session ? "👤 " + (displayName() || session.user.email) : t("account.login");
+    $("account-label").textContent = session ? (displayName() || session.user.email) : t("account.login");
+    $("account-avatar").hidden = !session && !(profile && profile.avatar);
+    paintAvatar($("account-avatar"));
+    paintAvatar($("settings-avatar"));
+    $("avatar-remove").hidden = !(profile && profile.avatar);
     $("logout-btn").hidden = !session;
   }
+  // Profile picture: shrunk to 128×128 in the browser, then saved with the profile (and the account, if signed in).
+  $("avatar-input").addEventListener("change", function (e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !/^image\//.test(file.type)) return;
+    const reader = new FileReader();
+    reader.onload = function () {
+      const img = new Image();
+      img.onload = function () {
+        const size = 128, c = document.createElement("canvas");
+        c.width = c.height = size;
+        const side = Math.min(img.width, img.height);
+        c.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+        profile = Object.assign({ completed: false, interests: [] }, profile || {}, { avatar: c.toDataURL("image/jpeg", 0.8) });
+        persistProfile();
+        updateAccountUI();
+        toast(t("set.photoSaved"));
+      };
+      img.onerror = function () { toast(t("set.photoBad")); };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+  $("avatar-remove").addEventListener("click", function () {
+    if (!profile) return;
+    delete profile.avatar;
+    persistProfile();
+    updateAccountUI();
+  });
   async function logout() {
     if (session) { try { await api("/api/logout", { method: "POST" }); } catch (e) {} }
     endSession();
@@ -1206,6 +1403,7 @@
     $("auth-lead").classList.toggle("intro-alert", !!message);
     $("a-name-wrap").hidden = !reg;
     $("a-confirm-wrap").hidden = !reg;
+    $("a-terms-wrap").hidden = !reg;
     $("a-email-help").hidden = !reg;
     $("a-password-help").hidden = !reg;
     $("a-password").setAttribute("autocomplete", reg ? "new-password" : "current-password");
@@ -1232,8 +1430,9 @@
     if (reg && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail(t("auth.badEmail"), "a-email");
     if (reg && !name) return fail(t("auth.needName"), "a-name");
     if (!password) return fail(t("auth.needPassword"), "a-password");
-    if (reg && password.length < 6) return fail(t("auth.shortPassword"), "a-password");
+    if (reg && password.length < 8) return fail(t("auth.shortPassword"), "a-password");
     if (reg && password !== $("a-confirm").value) return fail(t("auth.mismatch"), "a-confirm");
+    if (reg && !$("a-terms").checked) return fail(t("auth.needTerms"), "a-terms");
     $("a-submit").disabled = true;
     try {
       const body = { email: email, password: password };
@@ -1258,11 +1457,11 @@
   });
   function afterSignIn() {
     const next = pendingAfterAuth;
-    if (!profile || !profile.completed) { openSurvey(next === "share" ? "events" : "chat"); return; }
+    if (!profile || !profile.completed) { openSurvey(next === "share" ? "events" : HOME); return; }
     pendingAfterAuth = "";
     if (next === "share") openCreate();
     else if (next === "community-post") { go("community"); setTimeout(function () { $("open-post").click(); }, 50); }
-    else go(next || "chat");
+    else go(next || HOME);
   }
   $("auth-switch").addEventListener("click", function () {
     openAuth(authMode === "register" ? "login" : "register", pendingAfterAuth ? $("auth-lead").textContent : "");
@@ -1270,7 +1469,7 @@
   function continueAsGuest() {
     pendingAfterAuth = "";
     save(GUEST_KEY, true);
-    if (profile) go("chat"); else openSurvey();
+    if (profile) go(HOME); else openSurvey();
   }
   $("auth-guest").addEventListener("click", continueAsGuest);
   $("w-guest").addEventListener("click", continueAsGuest);
@@ -1540,9 +1739,13 @@
     if (messages.children.length) { input.focus(); return; }
     addMessage(t("chat.greeting", { name: displayName() ? " " + displayName() : "" }), "assistant");
     quickReplies.replaceChildren();
+    const starters = el("div", "message-buttons starters");
+    starters.setAttribute("role", "group");
+    starters.setAttribute("aria-label", t("chat.choices"));
+    messages.appendChild(starters);
     [["chat.q.week", "chat.q.weekMsg"], ["chat.q.garden", "chat.q.gardenMsg"], ["chat.q.near", "chat.q.nearMsg"],
      ["chat.q.volunteer", "chat.q.volunteerMsg"], ["chat.q.post", "chat.q.postMsg"]].forEach(function (q) {
-      quickReplies.appendChild(button("btn btn-secondary btn-chip", t(q[0]), function () {
+      starters.appendChild(button("btn btn-secondary btn-chip", t(q[0]), function () {
         if (q[0] === "chat.q.post" && !session) { pendingAfterAuth = "chat"; openAuth("register", t("auth.shareFirst")); return; }
         sendMessage(t(q[1]), true);
       }));
@@ -1552,6 +1755,15 @@
   $("chat-form").addEventListener("submit", function (e) { e.preventDefault(); sendMessage(input.value, true); });
   input.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input.value, true); } });
   $("chat-back").addEventListener("click", function () { sendMessage("/go_back", false, t("chat.back")); });
+  function setChatFull(on) {
+    document.body.classList.toggle("chat-full", on);
+    $("chat-full").setAttribute("aria-pressed", String(on));
+    $("chat-full").textContent = t(on ? "chat.exitFull" : "chat.full");
+    messages.scrollTop = messages.scrollHeight;
+  }
+  $("chat-full").addEventListener("click", function () { setChatFull(!document.body.classList.contains("chat-full")); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && document.body.classList.contains("chat-full")) setChatFull(false); });
+  window.addEventListener("hashchange", function () { if (location.hash !== "#chat") setChatFull(false); });
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const mic = $("mic-button");
@@ -1573,7 +1785,6 @@
     rerender: rerender, get senderId() { return senderId; }, get session() { return session; },
     get profile() { return profile; }, get config() { return config; } };
   I.apply();
-  if (window.matchMedia && window.matchMedia("(max-width: 760px)").matches) $("more-filters").open = false;
   buildAllChoices();
   renderLangSwitches();
   applyDisplay();

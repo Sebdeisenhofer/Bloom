@@ -37,7 +37,7 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 from actions.actions import connect, infer_area, infer_interest_tags, initialize_database
-from actions.sources import SALEM, SOURCES, locate, sample_rows, source_info
+from actions.sources import SALEM, SOURCES, locate, sample_rows, samples_enabled, source_info
 
 LIBRARY_FEED = "https://cityofsalemlibrary.libcal.com/ical_subscribe.php?src=p&cid=16811"
 DAYS_AHEAD = 60
@@ -100,7 +100,8 @@ NOT_FOR_OLDER_ADULTS = re.compile(
     r"\b(kids?|child|children|children's|teens?|tweens?|toddlers?|infants?|bab(?:y|ies)|preschool\w*|"
     r"story ?times?|storytime|lego|obob|youth|niñ[oa]s|cuentos|сказки|family fun|family storytime|"
     r"sleepover|stuffy|santa|study with snacks|read to a pet|manga|homework|"
-    r"closed|closures?|members[- ]only)\b",
+    r"closed|closures?|members[- ]only|goodwill|esl beginner|advisory board|board meeting|"
+    r"open skate|roller ?skat\w*|job (?:fair|club|search)|resume|career)\b",
     re.I,
 )
 
@@ -580,7 +581,7 @@ def refresh(loaders=None) -> dict:
     # Samples: shown for sources with no feed, or whose feed has nothing upcoming right now.
     with connect() as db:
         # (The Willamette athletics feed doesn't cover campus arts and lectures, so those samples stay.)
-        samples = [r for r in sample_rows() if r["source"] not in live_sources or r["source"] == "willamette"]
+        samples = [r for r in sample_rows() if r["source"] not in live_sources or r["source"] == "willamette"] if samples_enabled() else []
         upsert(db, samples)
         keep = [r["external_id"] for r in samples] or ["-"]
         db.execute(f"DELETE FROM events WHERE is_sample = 1 AND external_id NOT IN ({', '.join('?' for _ in keep)})", keep)

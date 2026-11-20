@@ -36,7 +36,7 @@
     const timingRow = el("div", "choice-row");
     const existing = (cache && cache[ev.id]) || [];
     const current = (existing.find(function (r) { return r.channel !== "calendar"; }) || {}).timing || p.reminderTiming || "1d";
-    [["1d", "mine.dayBefore"], ["2h", "mine.twoHours"]].forEach(function (o) {
+    [["2h", "mine.twoHours"], ["1d", "mine.dayBefore"], ["3d", "mine.threeDays"], ["1w", "mine.week"], ["2w", "mine.twoWeeks"]].forEach(function (o) {
       const label = el("label", "choice");
       const input = el("input");
       input.type = "radio"; input.name = "timing-" + ev.id; input.value = o[0]; input.checked = o[0] === current;
@@ -92,7 +92,7 @@
     }
     actions.appendChild(button("btn btn-primary btn-small", t("mine.setReminder"), function () { submit(false); }));
     actions.appendChild(button("btn btn-secondary btn-small", t("mine.calendarIcs"), function () {
-      B().downloadIcs(ev, m.date, [timing() === "2h" ? 120 : 1440]);
+      B().downloadIcs(ev, m.date, [{ "2h": 120, "1d": 1440, "3d": 4320, "1w": 10080, "2w": 20160 }[timing()] || 1440]);
     }));
     if (config.email || config.sms) actions.appendChild(button("btn btn-ghost btn-small", t("mine.testReminder"), function () { submit(true); }));
     box.appendChild(actions);

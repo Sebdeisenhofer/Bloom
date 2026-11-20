@@ -84,13 +84,13 @@ def reminder_text(event: dict, timing: str, lang: str = "en") -> tuple[str, str]
     when = friendly_date_in(event["date"], lang)
     link = event.get("source_url") or event.get("url") or ""
     if lang == "es":
-        soon = "mañana" if timing == "1d" else "en 2 horas"
+        soon = {"1d": "mañana", "2h": "en 2 horas", "3d": "en 3 días", "1w": "en una semana", "2w": "en dos semanas"}.get(timing, "pronto")
         subject = f"Recordatorio de Bloom: {event['title']} es {soon}"
         body = (f"¡Hola! 🌸\n\nLe recordamos que {event['title']} es {soon}.\n\n"
                 f"Cuándo: {when}, {event['time']}\nDónde: {event['location']}\n" + (f"Más información: {link}\n" if link else "") +
                 "\nPor favor confirme los detalles con los organizadores.\n\nCon cariño,\nBloom · Salem, Oregon")
     else:
-        soon = "tomorrow" if timing == "1d" else "in 2 hours"
+        soon = {"1d": "tomorrow", "2h": "in 2 hours", "3d": "in 3 days", "1w": "in one week", "2w": "in two weeks"}.get(timing, "coming up")
         subject = f"Bloom reminder: {event['title']} is {soon}"
         body = (f"Hello! 🌸\n\nJust a friendly reminder that {event['title']} is {soon}.\n\n"
                 f"When: {when}, {event['time']}\nWhere: {event['location']}\n" + (f"More info: {link}\n" if link else "") +

@@ -10,6 +10,7 @@ from rasa_sdk.events import SlotSet
 from rasa_sdk.executor import CollectingDispatcher
 
 from actions.i18n import friendly_date_in, language_of, t
+from actions import rag  # noqa: E402
 
 
 DB_PATH = os.environ.get("COMMUNITY_DB_PATH", "/data/community.sqlite3")
@@ -101,9 +102,11 @@ def initialize_database() -> None:
         # The original invented demo events (no source) are retired in favor of real and sample listings.
         db.execute("DELETE FROM events WHERE source = '' AND created_by IS NULL")
         db.execute("UPDATE events SET source_url = url WHERE source_url = '' AND url != ''")
-        # First start (or no internet yet): put the labelled sample listings in place right away.
-        if db.execute("SELECT COUNT(*) FROM events WHERE source != 'community'").fetchone()[0] == 0:
-            from actions.sources import sample_rows
+        from actions.sources import sample_rows, samples_enabled
+        if not samples_enabled():
+            db.execute("DELETE FROM events WHERE is_sample = 1")  # only real listings in the live app
+        # Sample listings (tests / offline demos only): put them in place right away.
+        elif db.execute("SELECT COUNT(*) FROM events WHERE source != 'community'").fetchone()[0] == 0:
             for row in sample_rows():
                 cols = ", ".join(row)
                 db.execute(f"INSERT OR IGNORE INTO events ({cols}) VALUES ({', '.join('?' for _ in row)})", tuple(row.values()))
@@ -472,6 +475,17 @@ def rank_events(profile: dict[str, Any], query: str = "", location: dict | None 
     return sorted(ranked, key=lambda event: (-event["score"], event["date"], event["title"]))
 
 
+def unique_events(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per repeating listing (a weekly class shows once, at its best-ranked date)."""
+    seen, out = set(), []
+    for event in ranked:
+        key = ((event.get("source") or "") + "|" + event["title"]).lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(event)
+    return out
+
+
 def event_card(event: dict[str, Any]) -> dict[str, Any]:
     from actions.sources import source_info
 
@@ -607,12 +621,20 @@ def find_event_in_text(text: str, fallback_id: str | None = None) -> dict | None
                 return dict(row)
         said = words(text) - QUERY_STOPWORDS - {"save", "go", "rsvp", "remind", "reminder", "add", "guardar", "guarda",
                                                 "evento", "sobre", "cuéntame", "yes", "sí", "si", "like", "to", "would", "id"}
-        best, best_hits = None, 0
+        upcoming = current_events(db)
+        # The full title typed out wins (longest first, so "Garden Tour" doesn't beat "Gaiety Hollow Garden Tour").
+        lowered = " ".join(text.lower().split())
+        named = [e for e in upcoming if len(e["title"]) > 3 and " ".join(e["title"].lower().split()) in lowered]
+        if named:
+            return max(named, key=lambda e: (len(e["title"]), -int(e["date"].replace("-", ""))))
+        best, best_hits, best_fit = None, 0, 0.0
         if said:
-            for event in current_events(db):
-                hits = len(said & words(event["title"]))
-                if hits > best_hits or (hits == best_hits and best and event["date"] < best["date"]):
-                    best, best_hits = event, hits
+            for event in upcoming:
+                title_words = words(event["title"])
+                hits = len(said & title_words)
+                fit = hits / max(1, len(title_words))  # prefer the title that matches most completely
+                if hits > best_hits or (hits == best_hits and best and (fit > best_fit or (fit == best_fit and event["date"] < best["date"]))):
+                    best, best_hits, best_fit = event, hits, fit
         if best and best_hits >= max(1, min(2, len(said))):
             return best
         if fallback_id:
@@ -876,7 +898,7 @@ class ActionSearchEvents(Action):
         profile = chat_profile(tracker)
         query = tracker.latest_message.get("text") or ""
         location = search_location(query)
-        ranked = rank_events(profile, query, location)
+        ranked = unique_events(rank_events(profile, query, location))
         cards = [event_card(event) for event in ranked[:6]]
         if location:
             near = [e for e in ranked if e["miles"] is not None and e["miles"] <= location["radius"]]
@@ -886,6 +908,9 @@ class ActionSearchEvents(Action):
             text = t(lang, "found", n=len(ranked), shown=len(cards))
         if cards and not location and ranked[0].get("reasons"):
             text += " " + ("Top pick" if lang == "en" else "La mejor opción") + f": {ranked[0]['title']} — {reasons_text(tracker, ranked[0]['reasons'])}."
+        # RAG: with an OpenAI key, a short answer written only from the retrieved listings.
+        if not query.startswith("/"):
+            text = rag.answer(query, [event_card(e) for e in ranked[:8]], lang) or text
         dispatcher.utter_message(text=text, json_message={"events": cards, "location": location})
         buttons = [{"title": t(lang, "tell_about", title=c["title"]), "payload": f"Tell me more about event {c['id']}"} for c in cards[:3]]
         if buttons:
@@ -974,12 +999,18 @@ class ActionSaveRsvp(Action):
         return [SlotSet("selected_event_id", str(event["id"]))]
 
 
+from datetime import timedelta as _td  # noqa: E402
+
+# How far ahead each reminder option goes out.
+REMINDER_OFFSETS = {"2h": _td(hours=2), "1d": _td(days=1), "3d": _td(days=3), "1w": _td(weeks=1), "2w": _td(weeks=2)}
+
+
 def reminder_send_at(event: dict, timing: str) -> str:
     from datetime import datetime, timedelta
 
     start = parse_event_time(event.get("time") or "") or "9:00 AM"
     when = datetime.strptime(f"{event['date']} {start}", "%Y-%m-%d %I:%M %p")
-    return (when - (timedelta(days=1) if timing == "1d" else timedelta(hours=2))).isoformat(timespec="minutes")
+    return (when - REMINDER_OFFSETS.get(timing, REMINDER_OFFSETS["1d"])).isoformat(timespec="minutes")
 
 
 from actions.notify import email_ready, sms_ready  # noqa: E402  (optional email/SMS settings)
@@ -996,7 +1027,13 @@ class ActionSetReminder(Action):
         lang = language_of(tracker)
         user_id = tracker_user(tracker)
         raw = f"{tracker.get_slot('reminder_timing') or ''} {tracker.latest_message.get('text') or ''}".lower()
-        if re.search(r"\b2h\b|\b(2|two|dos)\s*(hours?|horas?|hrs?)\b|\bhours?\b|\bhoras?\b", raw):
+        if re.search(r"\b2w\b|\b(2|two|dos)\s*(weeks?|semanas?)\b", raw):
+            timing = "2w"
+        elif re.search(r"\b1w\b|\b(a|one|1|una)\s*(week|semana)\b|\bweek before\b", raw):
+            timing = "1w"
+        elif re.search(r"\b3d\b|\b(3|three|tres)\s*(days?|d[ií]as?)\b", raw):
+            timing = "3d"
+        elif re.search(r"\b2h\b|\b(2|two|dos)\s*(hours?|horas?|hrs?)\b|\bhours?\b|\bhoras?\b", raw):
             timing = "2h"
         elif re.search(r"\b1d\b|\bday\b|\bd[ií]a\b|\bnight before\b|\bnoche anterior\b|\btomorrow\b", raw):
             timing = "1d"
@@ -1004,6 +1041,7 @@ class ActionSetReminder(Action):
             dispatcher.utter_message(text=t(lang, "reminder_when"), buttons=[
                 {"title": t(lang, "reminder_1d"), "payload": t(lang, "reminder_payload_1d")},
                 {"title": t(lang, "reminder_2h"), "payload": t(lang, "reminder_payload_2h")},
+                {"title": t(lang, "reminder_1w"), "payload": t(lang, "reminder_payload_1w")},
             ])
             return []
         event = None
@@ -1125,7 +1163,11 @@ class ActionHandleFreeText(Action):
         elif re.search(r"help|what can you do|ayuda|qué puedes", text):
             dispatcher.utter_message(text=t(tracker, "help_short"))
         else:
-            dispatcher.utter_message(text=t(tracker, "fallback_free"))
+            # RAG: answer a free-form question from the most relevant listings, when an LLM key is set.
+            raw = tracker.latest_message.get("text") or ""
+            ranked = unique_events(rank_events(chat_profile(tracker), raw, search_location(raw))) if rag.enabled() else []
+            reply = rag.answer(raw, [event_card(e) for e in ranked[:8]], language_of(tracker))
+            dispatcher.utter_message(text=reply or t(tracker, "fallback_free"))
         return []
 
 

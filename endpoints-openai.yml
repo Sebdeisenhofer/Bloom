@@ -1,0 +1,12 @@
+# Used automatically instead of endpoints.yml when OPENAI_API_KEY is set in .env.
+# The command generator then runs on your own OpenAI account instead of Rasa's shared (often busy) tutorial endpoint.
+action_endpoint:
+  url: http://action-server:5055/webhook
+
+model_groups:
+  - id: rasa_command_generation_model
+    models:
+      - provider: openai
+        model: gpt-4.1-mini
+        timeout: 20
+        temperature: 0.0

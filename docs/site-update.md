@@ -19,11 +19,11 @@ so the person stays in control.
 
 | Part | Technology | What it does |
 | --- | --- | --- |
-| Website | HTML, CSS, JavaScript | Welcome page (account, log in or guest), survey, and six large tabs: Chat, Events, My Events, Volunteer, Community, Settings. English and Spanish, larger text, high contrast, read aloud, voice input. |
-| Ask Bloom agent | Rasa Pro CALM 3.21 | Multi-turn conversations in English and Spanish: find events by type, day, time or place; save an event and set a reminder; post an event step by step; "go back" to change the last answer; cancel. An LLM turns free-form messages into Rasa commands. |
+| Website | HTML, CSS, JavaScript | Welcome page (account, log in or guest), survey, and four tabs: Events, My Events, Chat, Settings. Separate phone and computer layouts, English and Spanish, larger text, high contrast, read aloud, voice input, Terms & privacy. |
+| Ask Bloom agent | Rasa Pro CALM 3.21 | Multi-turn conversations in English and Spanish: find events by type, day, time or place; save an event and set a reminder; post an event step by step; "go back" to change the last answer; cancel. An LLM (Rasa-hosted, or your own OpenAI key) turns free-form messages into Rasa commands; with a key, event answers use retrieval-augmented generation (RAG) over the ranked listings. |
 | Action server | Python (rasa_sdk) | Ranks events by interests, source, time and distance; checks dates, times and yes/no answers; rewinds the conversation for "go back"; saves events and reminders. |
-| Events API | Python | Events board, accounts (email + display name; passwords salted and hashed), saved events, community groups with joins and comments, ZIP/town lookup, and the reminder job. |
-| Importer | Python, on start and every 3 hours | Pulls public feeds (Salem Public Library, Press Play Salem, Dave in Salem, Willamette Heritage Center, Willamette Bearcats), removes children's and teen programs, tags and locates each event, and fills gaps with clearly labelled sample listings. |
+| Events API | Python | Events board, accounts (email + display name; passwords salted and hashed with PBKDF2-SHA256), saved events, community groups with joins and comments, ZIP/town lookup, sign-in rate limits, and the reminder job. |
+| Importer | Python, on start and every 3 hours | Pulls public feeds (Salem Public Library, Press Play Salem, Dave in Salem, Willamette Heritage Center, Willamette Bearcats), removes children's, teen and other irrelevant programs, tags and locates each event. Real events only. |
 | Location data | U.S. Census gazetteer (bundled) | Every U.S. ZIP code and town, so place and ZIP + radius search work offline. |
 | Reminders | Calendar files, SMTP, Twilio | .ics calendar reminders always work. Email goes to the bundled MailHog demo inbox unless real SMTP is configured; text messages are optional (Twilio). |
 | Database | SQLite (Docker volume) | One shared store, so an event saved or posted in the chat shows up on the website right away. |
@@ -42,11 +42,11 @@ so the person stays in control.
 
 **Demo login:** `demo@bloom.local` / `demo`, or open the site with `?demo`.
 
-**Optional services:** real email (SMTP) and text messages (Twilio) are set in
+**Optional services:** an OpenAI key (faster chat and RAG answers), real email (SMTP) and text messages (Twilio) are set in
 `.env`. Without them Bloom still runs and says plainly that those reminders are
 not configured.
 
-**Tests:** 54 unit tests and 26 end-to-end conversation tests, including
+**Tests:** 61 unit tests and 26 end-to-end conversation tests, including
 location search, ZIP + radius, "go back", reminders and Spanish.
 
 ---
@@ -81,13 +81,13 @@ preferred time of day, and seeing events from several sources.
    - Salem Art Association
    - Elsinore Theatre
 
-   Public feeds are imported automatically. Sources without a feed show clearly labelled sample listings that link to the real website. Every event has **Visit website**, plus **Get tickets** when tickets apply. Gardeners see Deepwood and Lord & Schryver first.
+   Public feeds are imported automatically. Calendars without a feed are linked from the Events page. Every event has **Visit website**, plus **Get tickets** when tickets apply. Gardeners see Deepwood and Lord & Schryver first.
 3. **"Let me look somewhere else, like the coast or Portland."**
    - Search by town or region name, or by ZIP code within 5, 10, 25 or 50 miles. This works in the chat and in the Events tab.
    - Nearby events come first, and nothing is hidden.
-4. **"Volunteering deserves its own place."** A dedicated Volunteer tab, plus sample volunteer shifts at Deepwood, Lord & Schryver and Meals on Wheels.
+4. **"Volunteering deserves its own place."** Volunteering is a one-tap category on the Events page.
 5. **"People want to start groups, like a French conversation group."**
-   - The Community tab lets neighbors post meetups by interest, and others can join or comment.
+   - "Neighbor groups" (a category on the Events page) lets neighbors post meetups by interest, and others can join or comment.
    - "Language & conversation groups" is now an interest in the survey and in Events.
 6. **"Help me remember."**
    - My Events has calendar files that work everywhere.
@@ -105,15 +105,47 @@ preferred time of day, and seeing events from several sources.
 
 ---
 
+### Second round of feedback (November 20)
+
+After testing the first redesign, our team and the Dave in Salem blogger asked for a calmer, denser layout and only real events. What we changed:
+
+1. **Simpler navigation.** Four tabs in the order people use them: **Events, My Events, Chat, Settings**. Volunteer and Community became categories inside Events.
+2. **Less scrolling.**
+   - The Events page uses the full screen width, with compact cards in a grid (four across on a laptop).
+   - Results come in numbered pages of 12.
+   - A weekly class appears once, with its other dates under *More details*.
+   - A category bar, one search box and a day picker replace the long filter form. The rest sits under *More filters*.
+3. **Smaller, cleaner cards.**
+   - The default size is about 25% smaller; *Larger text* is still one tap away.
+   - The date appears only in the date block, and the place only once.
+   - Tags and other details moved behind *More details*.
+4. **Who posted it.** Each organization has its own badge on every card, and people can add a profile picture.
+5. **Only real, relevant events.**
+   - All invented sample events are gone.
+   - Job-search, ESL, board-meeting and roller-skate listings are filtered out, along with children's programs.
+   - The 25 calendars the blogger recommended are linked on the Events page.
+6. **Reminders further ahead:** 2 hours, 1 day, 3 days, 1 week or 2 weeks before.
+7. **A bigger, sturdier chat.**
+   - The chat fills the screen, with a full-screen button.
+   - Suggested questions show on phones too.
+   - Common questions still work when the shared AI service is busy.
+   - An optional OpenAI key gives faster replies and RAG answers.
+8. **Phone and computer layouts.** Phones get a single column and a bottom tab bar; computers get the wide grid. The site picks the layout automatically.
+9. **Trust and safety.**
+   - A visible AI notice sits in the chat and the footer.
+   - A Terms & privacy page covers AI use, events, acceptable use, data, security and limits of responsibility. New accounts must agree to it.
+   - Passwords are hashed with PBKDF2-SHA256 and must be at least 8 characters.
+   - Sign-in attempts are rate limited, sessions expire after 30 days, and security headers are on.
+
 ## Screenshots to add to the site
 
 1. The welcome page with the English / Español picker
-2. The Chat tab answering "Garden events near Silverton", with Visit website buttons
-3. The Events tab: filters, date headings and "Show 10 more"
-4. A sample listing card with its "Sample listing" note
-5. My Events with the reminder panel (1 day / 2 hours, email / text)
-6. The MailHog inbox showing a reminder email
-7. The Community tab with the French conversation group
-8. The Volunteer tab
+2. The Events tab on a laptop: category bar, compact card grid, page numbers
+3. The same page on a phone, with the bottom tab bar
+4. An event card with *More details* open (repeat dates, organization badge)
+5. My Events with the reminder panel (2 hours to 2 weeks, email / text)
+6. The chat in full screen, with the AI notice
+7. The Terms & privacy page
+8. Settings with a profile picture, larger text and high contrast
 9. The chat in Spanish, including "volver atrás"
-10. Settings with larger text and high contrast turned on
+10. "Where these events come from" and "More Salem-area calendars"

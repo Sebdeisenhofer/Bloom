@@ -12,7 +12,7 @@
   <a class="skip-link" href="#main" data-i18n="skip">Skip to main content</a>
 
   <header class="site-header">
-    <a class="brand" href="#chat" id="brand-link" data-i18n-aria="brand.home">
+    <a class="brand" href="#events" id="brand-link" data-i18n-aria="brand.home">
       <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true">
         <g fill="#e88aa0">
           <circle cx="20" cy="10" r="7"/><circle cx="30" cy="18" r="7"/><circle cx="26" cy="30" r="7"/>
@@ -26,7 +26,7 @@
       <button id="large-text" class="pill" type="button" aria-pressed="false" data-i18n="a11y.larger">A+ Larger text</button>
       <button id="contrast" class="pill" type="button" aria-pressed="false" data-i18n="a11y.contrast">High contrast</button>
       <button id="read-aloud" class="pill" type="button" aria-pressed="false">🔊 Read aloud: off</button>
-      <button id="account-btn" class="pill pill-account" type="button" data-i18n="account.login">👤 Log in</button>
+      <button id="account-btn" class="pill pill-account" type="button"><span id="account-avatar" class="avatar avatar-sm" aria-hidden="true"></span><span id="account-label" data-i18n="account.login">Log in</span></button>
       <button id="logout-btn" class="pill" type="button" hidden data-i18n="account.logout">Log out</button>
     </div>
   </header>
@@ -34,11 +34,9 @@
   <!-- ============ TABS (shown once someone is past the welcome page) ============ -->
   <nav id="tabbar" class="tabbar" hidden>
     <div class="tablist" role="tablist" data-i18n-aria="tabs.label">
-      <button role="tab" id="tab-chat" aria-controls="panel-chat" data-tab="chat" class="tab"><span class="tab-icon" aria-hidden="true">💬</span><span data-i18n="tab.chat">Chat</span></button>
       <button role="tab" id="tab-events" aria-controls="panel-events" data-tab="events" class="tab"><span class="tab-icon" aria-hidden="true">📅</span><span data-i18n="tab.events">Events</span></button>
       <button role="tab" id="tab-my-events" aria-controls="panel-my-events" data-tab="my-events" class="tab"><span class="tab-icon" aria-hidden="true">⭐</span><span data-i18n="tab.myEvents">My Events</span> <span id="saved-count" class="count-pill">0</span></button>
-      <button role="tab" id="tab-volunteer" aria-controls="panel-volunteer" data-tab="volunteer" class="tab"><span class="tab-icon" aria-hidden="true">🤝</span><span data-i18n="tab.volunteer">Volunteer</span></button>
-      <button role="tab" id="tab-community" aria-controls="panel-community" data-tab="community" class="tab"><span class="tab-icon" aria-hidden="true">🏡</span><span data-i18n="tab.community">Community</span></button>
+      <button role="tab" id="tab-chat" aria-controls="panel-chat" data-tab="chat" class="tab"><span class="tab-icon" aria-hidden="true">💬</span><span data-i18n="tab.chat">Chat</span></button>
       <button role="tab" id="tab-settings" aria-controls="panel-settings" data-tab="settings" class="tab"><span class="tab-icon" aria-hidden="true">⚙️</span><span data-i18n="tab.settings">Settings</span></button>
     </div>
   </nav>
@@ -100,6 +98,7 @@
             <input id="a-confirm" type="password" autocomplete="new-password" maxlength="200">
           </div>
           <label class="show-pw"><input type="checkbox" id="a-show"> <span data-i18n="auth.show">Show password</span></label>
+          <label class="show-pw" id="a-terms-wrap"><input type="checkbox" id="a-terms"> <span><span data-i18n="auth.agree">I agree to the</span> <a href="#terms" target="_blank" data-i18n="footer.terms">Terms &amp; privacy</a></span></label>
           <p id="a-error" class="form-error" role="alert"></p>
           <button type="submit" id="a-submit" class="btn btn-primary btn-wide"></button>
         </form>
@@ -177,7 +176,9 @@
       <div class="chat-page">
         <div class="chat-head">
           <h1 id="chat-title" data-i18n="chat.title">💬 Ask Bloom</h1>
+          <button type="button" id="chat-full" class="btn btn-ghost btn-small" aria-pressed="false" data-i18n="chat.full">⛶ Full screen</button>
         </div>
+        <p class="ai-note"><span data-i18n="chat.aiNote">🤖 Bloom is an AI assistant. It can make mistakes, so please check details with the event host, and don’t share private information like passwords or bank details.</span> <a href="#terms" data-i18n="footer.terms">Terms &amp; privacy</a></p>
         <div id="messages" class="messages" role="log" aria-live="polite"></div>
         <div id="quick-replies" class="quick-replies"></div>
         <form id="chat-form" class="chat-form">
@@ -195,45 +196,34 @@
 
     <!-- ============ TAB: EVENTS ============ -->
     <section id="panel-events" class="view" role="tabpanel" aria-labelledby="tab-events" hidden>
-      <div class="hero">
-        <div>
-          <h1 id="greeting">Good morning</h1>
-          <p id="hero-sub" class="lead"></p>
-        </div>
+      <div class="events-head">
+        <h1 id="greeting" class="greeting">Good morning</h1>
         <div class="hero-actions">
-          <button type="button" id="edit-profile" class="btn btn-secondary" hidden data-i18n="events.personalize"></button>
-          <button type="button" id="open-create" class="btn btn-primary" data-i18n="events.share"></button>
+          <button type="button" id="edit-profile" class="btn btn-ghost btn-small" hidden data-i18n="events.personalize"></button>
+          <button type="button" id="open-create" class="btn btn-primary btn-small" data-i18n="events.share"></button>
         </div>
       </div>
-      <p class="notice" data-i18n-html="events.control"></p>
+      <div id="cat-bar" class="cat-bar" role="group" data-i18n-aria="events.category"></div>
 
-      <form id="filters" class="search-panel" role="search" aria-labelledby="filters-title">
-        <h2 id="filters-title" class="field-label search-label" data-i18n="events.find">🔎 Find an event</h2>
-        <div class="filter-grid">
-          <div class="filter wide">
-            <label for="search-input" class="sr-only" data-i18n="events.find"></label>
-            <input id="search-input" type="search" autocomplete="off" data-i18n-placeholder="events.searchPlaceholder">
-          </div>
-          <div class="filter">
-            <label for="kind-filter" class="filter-label" data-i18n="events.category"></label>
-            <select id="kind-filter" class="select"></select>
-          </div>
-          <div class="filter">
-            <label for="when-filter" class="filter-label" data-i18n="events.date"></label>
-            <select id="when-filter" class="select">
-              <option value="" data-i18n="events.anyDay"></option>
-              <option value="today" data-i18n="events.today"></option>
-              <option value="week" data-i18n="events.week"></option>
-              <option value="weekend" data-i18n="events.weekend"></option>
-              <option value="pick" data-i18n="events.pick"></option>
-            </select>
-            <label for="date-filter" class="sr-only" data-i18n="events.pickLabel"></label>
-            <input id="date-filter" type="date" class="date-input" hidden>
-          </div>
+      <form id="filters" class="search-panel" role="search" data-i18n-aria="events.find">
+        <div class="find-row">
+          <label for="search-input" class="sr-only" data-i18n="events.find"></label>
+          <input id="search-input" type="search" autocomplete="off" data-i18n-placeholder="events.searchPlaceholder">
+          <label for="when-filter" class="sr-only" data-i18n="events.date"></label>
+          <select id="when-filter" class="select">
+            <option value="" data-i18n="events.anyDay"></option>
+            <option value="today" data-i18n="events.today"></option>
+            <option value="week" data-i18n="events.week"></option>
+            <option value="weekend" data-i18n="events.weekend"></option>
+            <option value="month" data-i18n="events.month"></option>
+            <option value="pick" data-i18n="events.pick"></option>
+          </select>
+          <label for="date-filter" class="sr-only" data-i18n="events.pickLabel"></label>
+          <input id="date-filter" type="date" class="date-input" hidden>
+          <button type="button" id="filters-toggle" class="btn btn-ghost btn-small" aria-expanded="false" aria-controls="more-filters" data-i18n="events.moreFilters">More filters</button>
         </div>
-        <details id="more-filters" class="more-filters" open>
-          <summary data-i18n="events.moreFilters">More filters</summary>
-        <div class="filter-grid">
+        <select id="kind-filter" class="select" hidden aria-hidden="true" tabindex="-1"></select>
+        <div id="more-filters" class="filter-grid" hidden>
           <div class="filter">
             <label for="tod-filter" class="filter-label" data-i18n="events.time"></label>
             <select id="tod-filter" class="select">
@@ -247,7 +237,7 @@
             <label for="source-filter" class="filter-label" data-i18n="events.source"></label>
             <select id="source-filter" class="select"><option value="" data-i18n="events.allSources"></option></select>
           </div>
-          <div class="filter wide">
+          <div class="filter">
             <label for="place-filter" class="filter-label" data-i18n="events.location"></label>
             <input id="place-filter" type="search" autocomplete="off" data-i18n-placeholder="events.locationPlaceholder">
           </div>
@@ -260,21 +250,29 @@
               <option value="50">50 mi</option>
             </select>
           </div>
-        </div>
-        </details>
-        <div class="sort-row" role="group" aria-labelledby="sort-label">
-          <span id="sort-label" data-i18n="events.sortLabel">Show</span>
-          <button type="button" class="pill" data-sort="date" aria-pressed="true" data-i18n="events.byDate"></button>
-          <button type="button" class="pill" data-sort="match" aria-pressed="false" data-i18n="events.byMatch"></button>
+          <div class="filter sort-row" role="group" aria-labelledby="sort-label">
+            <span id="sort-label" class="filter-label" data-i18n="events.sortLabel">Show</span>
+            <div class="sort-buttons">
+              <button type="button" class="pill" data-sort="date" aria-pressed="true" data-i18n="events.byDate"></button>
+              <button type="button" class="pill" data-sort="match" aria-pressed="false" data-i18n="events.byMatch"></button>
+            </div>
+          </div>
         </div>
         <p id="search-status" class="search-status" role="status" hidden></p>
       </form>
-      <p id="source-note" class="source-note"></p>
 
       <h2 id="picks-title" class="section-title" data-i18n="events.topPicks">Top picks for you</h2>
       <div id="top-picks" class="top-picks"></div>
       <h2 class="section-title"><span id="list-title" data-i18n="events.all"></span> <span id="event-count" class="count"></span></h2>
       <div id="event-list" class="event-groups"></div>
+      <nav id="pager" class="pager" data-i18n-aria="events.pages"></nav>
+
+      <section class="sources-box" aria-labelledby="sources-title">
+        <h2 id="sources-title" class="section-title" data-i18n="events.whereFrom">Where these events come from</h2>
+        <div id="source-list" class="source-list"></div>
+        <h3 class="sources-sub" data-i18n="events.moreCalendars">More Salem-area calendars to explore</h3>
+        <ul id="ref-list" class="ref-list"></ul>
+      </section>
     </section>
 
     <!-- ============ TAB: MY EVENTS ============ -->
@@ -291,16 +289,8 @@
       </div>
     </section>
 
-    <!-- ============ TAB: VOLUNTEER ============ -->
-    <section id="panel-volunteer" class="view" role="tabpanel" aria-labelledby="tab-volunteer" hidden>
-      <h1 class="page-title" data-i18n="vol.title">🤝 Volunteer</h1>
-      <p class="lead" data-i18n="vol.lead"></p>
-      <div id="volunteer-list" class="event-groups"></div>
-      <p id="volunteer-empty" class="empty" hidden data-i18n="vol.empty"></p>
-    </section>
-
-    <!-- ============ TAB: COMMUNITY ============ -->
-    <section id="panel-community" class="view" role="tabpanel" aria-labelledby="tab-community" hidden>
+    <!-- ============ COMMUNITY GROUPS (a category inside Events) ============ -->
+    <section id="panel-community" class="view" role="tabpanel" aria-labelledby="tab-events" hidden>
       <div class="page-head">
         <div>
           <h1 class="page-title" data-i18n="com.title">🏡 Community</h1>
@@ -356,8 +346,11 @@
           <form id="reminder-settings" novalidate>
             <p class="field-label" data-i18n="set.defaultTiming"></p>
             <div class="choice-row">
-              <label class="choice"><input type="radio" name="def-timing" value="1d" checked><span class="choice-text" data-i18n="mine.dayBefore"></span></label>
               <label class="choice"><input type="radio" name="def-timing" value="2h"><span class="choice-text" data-i18n="mine.twoHours"></span></label>
+              <label class="choice"><input type="radio" name="def-timing" value="1d" checked><span class="choice-text" data-i18n="mine.dayBefore"></span></label>
+              <label class="choice"><input type="radio" name="def-timing" value="3d"><span class="choice-text" data-i18n="mine.threeDays"></span></label>
+              <label class="choice"><input type="radio" name="def-timing" value="1w"><span class="choice-text" data-i18n="mine.week"></span></label>
+              <label class="choice"><input type="radio" name="def-timing" value="2w"><span class="choice-text" data-i18n="mine.twoWeeks"></span></label>
             </div>
             <label class="field-label" for="rem-email" data-i18n="set.reminderEmail"></label>
             <input id="rem-email" type="email" maxlength="120" placeholder="you@example.com">
@@ -369,6 +362,14 @@
         </section>
         <section class="panel" aria-labelledby="set-account-title">
           <h2 id="set-account-title" class="panel-title" data-i18n="set.account"></h2>
+          <div class="avatar-row">
+            <span id="settings-avatar" class="avatar avatar-lg" aria-hidden="true"></span>
+            <div>
+              <p class="field-label avatar-label" data-i18n="set.photo">Profile picture</p>
+              <label class="btn btn-secondary btn-small file-btn"><input id="avatar-input" type="file" accept="image/*" class="sr-only"><span data-i18n="set.photoPick">Choose a photo</span></label>
+              <button type="button" id="avatar-remove" class="btn btn-link" hidden data-i18n="set.photoRemove">Remove</button>
+            </div>
+          </div>
           <div id="account-box" class="account-box"></div>
           <form id="account-form" novalidate hidden>
             <label class="field-label" for="p-name" data-i18n="set.displayName"></label>
@@ -458,14 +459,31 @@
         </form>
       </div>
     </section>
+    <!-- ============ TERMS, PRIVACY & AI DISCLOSURE ============ -->
+    <section id="terms" class="view terms" hidden aria-labelledby="terms-title">
+      <article class="panel terms-card">
+        <button type="button" id="terms-back" class="btn btn-ghost btn-small" data-i18n="back">← Back</button>
+        <h1 id="terms-title" class="page-title" tabindex="-1" data-i18n="terms.title">Terms of use &amp; privacy</h1>
+        <p class="help-text" data-i18n="terms.updated"></p>
+        <h2 data-i18n="terms.aiTitle"></h2><p data-i18n="terms.ai"></p>
+        <h2 data-i18n="terms.eventsTitle"></h2><p data-i18n="terms.events"></p>
+        <h2 data-i18n="terms.useTitle"></h2><p data-i18n="terms.use"></p>
+        <h2 data-i18n="terms.dataTitle"></h2><p data-i18n="terms.data"></p>
+        <h2 data-i18n="terms.securityTitle"></h2><p data-i18n="terms.security"></p>
+        <h2 data-i18n="terms.liabilityTitle"></h2><p data-i18n="terms.liability"></p>
+        <h2 data-i18n="terms.contactTitle"></h2><p data-i18n="terms.contact"></p>
+      </article>
+    </section>
   </main>
 
   <footer class="site-footer">
     <p data-i18n="footer.note"></p>
+    <p class="footer-links"><span data-i18n="footer.ai">🤖 Ask Bloom uses AI and can make mistakes.</span> <a href="#terms" data-i18n="footer.terms">Terms &amp; privacy</a></p>
   </footer>
 
   <script src="i18n.js"></script>
   <script src="i18n-es.js"></script>
+  <script src="i18n-more.js"></script>
   <script src="reminders.js"></script>
   <script src="app.js"></script>
 </body>

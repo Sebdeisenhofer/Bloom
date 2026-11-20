@@ -89,3 +89,13 @@ The order comes from:
 - preferred time of day and group size;
 - what was asked for;
 - distance.
+
+## RAG answers (optional OpenAI key)
+
+With `OPENAI_API_KEY` set, the Rasa container uses `endpoints-openai.yml` for command generation. Event answers in the chat are then written with retrieval-augmented generation (`actions/rag.py`):
+
+1. **Retrieve:** `rank_events` scores every upcoming event against the question, the visitor's interests and any place they named, and the top 8 are kept.
+2. **Augment:** those listings go into the prompt, with instructions to use only them.
+3. **Generate:** the model writes 2–3 plain sentences in the visitor's language, shown above the same event cards.
+
+Without a key, or if the call fails, the templated wording is used. When the shared Rasa LLM is busy, `pattern_internal_error` runs `action_llm_fallback`, which still answers searches, details, saves and help from keywords.

@@ -1,6 +1,10 @@
 """Tests for the community-feedback update: sources, location search, go back, reminders, Spanish."""
 
 import os
+os.environ.setdefault("BLOOM_SAMPLE_EVENTS", "1")  # tests use the fixed sample listings
+
+
+import os
 import tempfile
 import unittest
 from datetime import date, timedelta
@@ -203,7 +207,39 @@ class ReminderTests(TempDb):
     def test_unclear_timing_asks_with_buttons(self):
         dispatcher = Dispatcher()
         actions.ActionSetReminder().run(dispatcher, Tracker(text="set a reminder"), {})
-        self.assertEqual(len(dispatcher.messages[0]["buttons"]), 2)
+        self.assertEqual(len(dispatcher.messages[0]["buttons"]), 3)  # 2 hours, 1 day, 1 week
+
+    def test_longer_reminder_options(self):
+        event = {"date": "2026-12-15", "time": "2:00 PM"}
+        self.assertEqual(actions.reminder_send_at(event, "1w"), "2026-12-08T14:00")
+        self.assertEqual(actions.reminder_send_at(event, "2w"), "2026-12-01T14:00")
+        self.assertEqual(actions.reminder_send_at(event, "3d"), "2026-12-12T14:00")
+        subject, _ = notify.reminder_text({"title": "Tea", "date": "2026-12-15", "time": "2:00 PM", "location": "Library"}, "1w")
+        self.assertIn("in one week", subject)
+
+
+class FindEventTests(TempDb):
+    def test_full_title_wins_over_shared_words(self):
+        day = (date.today() + timedelta(days=3)).isoformat()
+        later = (date.today() + timedelta(days=9)).isoformat()
+        with actions.connect() as db:
+            for title, d in (("Maple Tea", day), ("Reminder Tea", later)):
+                db.execute("INSERT INTO events (title, date, time, location, category, tags, group_size, description, host, area, cost, needs) "
+                           "VALUES (?, ?, '2:00 PM', 'Library', 'Social', 'social', 'small', '', 'Jo', 'downtown', 'Free', '')", (title, d))
+        self.assertEqual(actions.find_event_in_text("Save the Reminder Tea")["title"], "Reminder Tea")
+
+
+class RagTests(unittest.TestCase):
+    def test_off_without_a_key(self):
+        from actions import rag
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
+            self.assertIsNone(rag.answer("garden events?", [{"title": "Tour"}]))
+
+    def test_prompt_contains_only_retrieved_listings(self):
+        from actions import rag
+        context = rag.context_for([{"title": "Gaiety Hollow Garden Tour", "date": "2026-12-05", "time": "10:00 AM",
+                                    "location": "Gaiety Hollow", "description": "Tour the garden.", "source_name": "Lord & Schryver"}])
+        self.assertIn("Gaiety Hollow Garden Tour | 2026-12-05", context)
 
 
 class LlmFallbackTests(TempDb):

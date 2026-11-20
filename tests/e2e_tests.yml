@@ -729,17 +729,48 @@ test_cases:
 
   - test_case: "Save an event and set a reminder"
     steps:
-      - user: Save the Gaiety Hollow Garden Tour
+      # Bloom lists only real events, so the test posts its own event first, then saves it.
+      - user: I want to post an event
+        assertions:
+          - flow_started: create_event
+      - user: E2E Test Reminder Tea
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_date
+      - user: December 30
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_time
+      - user: 2 PM
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_location
+      - user: Salem Public Library
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_host
+      - user: Jordan
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_description
+      - user: skip
+        assertions:
+          - bot_uttered:
+              utter_name: utter_ask_event_confirmation
+      - user: "yes"
+        assertions:
+          - action_executed: action_save_event
+      - user: Save the E2E Test Reminder Tea
         assertions:
           - action_executed: action_save_rsvp
           - bot_uttered:
-              text_matches: "saved Gaiety Hollow Garden Tour to My Events"
-      - user: Remind me 1 day before
+              text_matches: "saved E2E Test Reminder Tea to My Events"
+      - user: Remind me 1 week before
         assertions:
           - flow_started: set_reminder
           - action_executed: action_set_reminder
           - bot_uttered:
-              text_matches: "reminder 1 day before for Gaiety Hollow Garden Tour"
+              text_matches: "reminder 1 week before for E2E Test Reminder Tea"
 
   - test_case: "Spanish - search, start posting, go back, cancel"
     steps:

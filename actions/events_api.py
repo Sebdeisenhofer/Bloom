@@ -20,7 +20,7 @@ so anything posted here is also searchable by the "Ask Bloom" assistant.
     POST   /api/community/<id>/comments -> add a comment (signed in); DELETE /api/community/<id> removes your post
     GET    /api/geo?q=                -> {lat, lon, label} for a ZIP, town or region ("coast")
     GET    /api/reminders?owner=      -> reminders for this person's saved events
-    POST   /api/reminders             -> {owner, event_id, timing: 1d|2h, channels: [email, sms], email, phone}
+    POST   /api/reminders             -> {owner, event_id, timing: 2h|1d|3d|1w|2w, channels: [email, sms], email, phone}
     POST   /api/reminders/test        -> send a reminder right now (for demos; rate limited)
     DELETE /api/reminders?owner=&event_id= -> stop reminders for an event
     GET    /api/health                -> {"ok": true}
@@ -38,7 +38,7 @@ import secrets
 import threading
 import uuid
 import time as clock_time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -132,12 +132,19 @@ def migrate() -> None:
             create_account(db, "demo", "demo", DEMO_PROFILE, [], email="demo@bloom.local", name="Margaret")
         db.execute("UPDATE accounts SET email = 'demo@bloom.local', name = 'Margaret' WHERE username = 'demo' AND email = ''")
         # Sample interest groups so the Community tab has examples on day one (clearly marked "Sample").
-        if not db.execute("SELECT 1 FROM posts LIMIT 1").fetchone():
+        from actions.sources import samples_enabled
+        if not samples_enabled():
+            db.execute("DELETE FROM posts WHERE is_sample = 1")
+        elif not db.execute("SELECT 1 FROM posts LIMIT 1").fetchone():
             db.execute("INSERT OR IGNORE INTO members (user_id, name, email, updated_at) VALUES ('sample-bloom', 'Bloom team', '', ?)", (now_iso(),))
             for category, title, schedule, place, body in SAMPLE_POSTS:
                 db.execute("INSERT INTO posts (user_id, category, title, body, schedule, place, is_sample, created_at) "
                            "VALUES ('sample-bloom', ?, ?, ?, ?, ?, 1, ?)", (category, title, body, schedule, place, now_iso()))
 
+
+# Profile pictures: a small image the browser has already shrunk, stored as a data URL (no file uploads).
+AVATAR_RE = re.compile(r"^data:image/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$")
+TIMINGS = ("2h", "1d", "3d", "1w", "2w")  # reminder options, see actions.REMINDER_OFFSETS
 
 COMMUNITY_CATEGORIES = {
     "language", "books", "gardening", "crafts", "walking", "fitness", "games", "music", "cooking", "faith",
@@ -195,6 +202,7 @@ def clean_profile(value) -> dict:
     text = lambda k, n: clean(value.get(k), n)
     words = lambda k: [clean(v, 30) for v in (value.get(k) or [])[:20] if isinstance(v, str)]
     email = text("email", 120)
+    avatar = str(value.get("avatar") or "")[:16000]
     return {
         "name": text("name", 60), "email": email if EMAIL_RE.match(email) else "",
         "interests": words("interests"), "area": text("area", 20), "distance": text("distance", 20),
@@ -203,8 +211,9 @@ def clean_profile(value) -> dict:
         "completed": bool(value.get("completed")),
         "reminderEmail": text("reminderEmail", 120) if EMAIL_RE.match(text("reminderEmail", 120)) else "",
         "phone": re.sub(r"[^0-9+]", "", text("phone", 30))[:16],
-        "reminderTiming": text("reminderTiming", 4) if text("reminderTiming", 4) in ("1d", "2h") else "1d",
+        "reminderTiming": text("reminderTiming", 4) if text("reminderTiming", 4) in TIMINGS else "1d",
         "language": text("language", 5) if text("language", 5) in ("en", "es") else "en",
+        "avatar": avatar if AVATAR_RE.match(avatar) else "",
     }
 
 
@@ -319,8 +328,10 @@ class Handler(BaseHTTPRequestHandler):
         token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
         if not token:
             return None
+        cutoff = (datetime.now() - timedelta(days=30)).isoformat(timespec="seconds")
         return db.execute(
-            "SELECT a.* FROM sessions s JOIN accounts a ON a.user_id = s.user_id WHERE s.token = ?", (token,)
+            "SELECT a.* FROM sessions s JOIN accounts a ON a.user_id = s.user_id WHERE s.token = ? AND s.created_at >= ?",
+            (token[:100], cutoff),
         ).fetchone()
 
     def new_session(self, db, account) -> None:
@@ -460,7 +471,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def save_reminder(self, body: dict, test: bool = False) -> None:
         owner = clean(body.get("owner"), 80)
-        timing = body.get("timing") if body.get("timing") in ("1d", "2h") else "1d"
+        timing = body.get("timing") if body.get("timing") in TIMINGS else "1d"
         lang = body.get("lang") if body.get("lang") in ("en", "es") else "en"
         channels = [c for c in body.get("channels") or [] if c in ("email", "sms")]
         email = clean(body.get("email"), 120)
@@ -477,6 +488,8 @@ class Handler(BaseHTTPRequestHandler):
             if not row:
                 return self.send(404, {"error": "That event is no longer listed."})
             event = dict(row)
+            if test and not self.session_user(db):
+                return self.send(401, {"error": "Please log in to send a test reminder."})
             if test:  # demo button: at most 3 test reminders per person per hour
                 recent = [t for t in self.test_sends.get(owner, []) if clock_time.time() - t < 3600]
                 if len(recent) >= 3:
@@ -592,8 +605,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(400, {"error": "That email doesn’t look quite right. Please check it."})
         if not name:
             return self.send(400, {"error": "Please tell us what to call you."})
-        if len(password) < 6:
-            return self.send(400, {"error": "Please choose a password with at least 6 characters."})
+        if len(password) < 8:
+            return self.send(400, {"error": "Please choose a password with at least 8 characters."})
         if len(password) > 200:
             return self.send(400, {"error": "That password is too long."})
         with connect() as db:
@@ -607,12 +620,29 @@ class Handler(BaseHTTPRequestHandler):
             account = db.execute("SELECT * FROM accounts WHERE user_id = ?", (user_id,)).fetchone()
             self.new_session(db, account)
 
+    failed_logins: dict = {}
+
+    def client_ip(self) -> str:
+        return (self.headers.get("X-Real-IP") or self.client_address[0] or "?")[:64]
+
+    def too_many_attempts(self, *keys: str) -> bool:
+        """At most 10 failed sign-ins per address or email in 15 minutes (slows password guessing)."""
+        now = clock_time.time()
+        for key in keys:
+            self.failed_logins[key] = [t for t in self.failed_logins.get(key, []) if now - t < 900]
+        return any(len(self.failed_logins[key]) >= 10 for key in keys)
+
     def login(self, body: dict) -> None:
-        email = str(body.get("email") or body.get("username") or "").strip()
-        password = str(body.get("password") or "")
+        email = str(body.get("email") or body.get("username") or "").strip()[:120]
+        password = str(body.get("password") or "")[:200]
+        keys = ("ip:" + self.client_ip(), "email:" + email.lower())
+        if self.too_many_attempts(*keys):
+            return self.send(429, {"error": "Too many tries. Please wait 15 minutes and try again."})
         with connect() as db:
             account = db.execute("SELECT * FROM accounts WHERE email = ? COLLATE NOCASE OR username = ?", (email, email)).fetchone()
             if not account or not hmac.compare_digest(hash_password(password, account["salt"]), account["password_hash"]):
+                for key in keys:
+                    self.failed_logins.setdefault(key, []).append(clock_time.time())
                 return self.send(401, {"error": "That email and password don’t match. Please try again."})
             self.new_session(db, account)
 

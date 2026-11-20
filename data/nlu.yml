@@ -17,10 +17,11 @@ nlu:
       - regresar
       - cambiar mi respuesta
   - intent: remind
+    # Whole phrases only: a bare "reminder" would fire inside answers like an event called "Reminder Tea".
     examples: |
       - remind me
-      - reminder
       - set a reminder
+      - add a reminder
       - recuérdame
       - recuerdame
-      - recordatorio
+      - ponme un recordatorio

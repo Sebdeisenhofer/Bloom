@@ -30,16 +30,16 @@
   <text x="60" y="204" class="s">HTML, CSS, JavaScript · English / Español</text>
   <text x="60" y="242" class="t">• Welcome: account, log in or guest</text>
   <text x="60" y="268" class="t">• Survey (interests, time of day…)</text>
-  <text x="60" y="300" class="lbl">Six tabs</text>
-  <text x="60" y="326" class="t">💬 Chat (Ask Bloom)</text>
-  <text x="60" y="352" class="t">📅 Events: filters, date groups,</text>
-  <text x="60" y="374" class="t">     place / ZIP + radius</text>
+  <text x="60" y="300" class="lbl">Four tabs</text>
+  <text x="60" y="326" class="t">📅 Events: categories (incl.</text>
+  <text x="60" y="352" class="t">     volunteer, groups), pages</text>
+  <text x="60" y="374" class="t">     search, place / ZIP + radius</text>
   <text x="60" y="400" class="t">⭐ My Events: calendar, reminders</text>
-  <text x="60" y="426" class="t">🤝 Volunteer</text>
-  <text x="60" y="452" class="t">🏡 Community: groups, join, comment</text>
-  <text x="60" y="478" class="t">⚙️ Settings: language, text size…</text>
+  <text x="60" y="426" class="t">💬 Chat: full screen, AI notice</text>
+  <text x="60" y="452" class="t">⚙️ Settings: photo, language…</text>
+  <text x="60" y="478" class="t">📜 Terms, privacy &amp; AI notice</text>
   <text x="60" y="516" class="lbl">Accessibility</text>
-  <text x="60" y="542" class="t">• 60 px tabs, keyboard, ARIA</text>
+  <text x="60" y="542" class="t">• Big tabs (bottom bar on phones)</text>
   <text x="60" y="568" class="t">• Larger text, high contrast</text>
   <text x="60" y="594" class="t">• Read aloud + voice input (EN/ES)</text>
   <text x="60" y="620" class="t">• Breadcrumbs, Back, “go back”</text>
@@ -72,8 +72,8 @@
   <text x="450" y="688" class="h">🔄 Importer</text>
   <text x="450" y="714" class="t">On start + every 3 hours: dedupe, tag,</text>
   <text x="450" y="736" class="t">locate, filter out kids/teen programs</text>
-  <text x="450" y="760" class="t">Feed down or offline → labelled</text>
-  <text x="450" y="782" class="t">sample listings for that source</text>
+  <text x="450" y="760" class="t">and other irrelevant listings;</text>
+  <text x="450" y="782" class="t">real events only, repeats merged</text>
 
   <rect x="860" y="160" width="320" height="135" rx="18" class="box"/>
   <text x="880" y="193" class="h">💬 Rasa Pro CALM :5006</text>
@@ -104,8 +104,8 @@
   <rect x="1260" y="160" width="300" height="135" rx="18" class="ext"/>
   <text x="1280" y="193" class="h">🧠 LLM command</text>
   <text x="1280" y="217" class="h">     generator</text>
-  <text x="1280" y="247" class="t">Turns what people type into</text>
-  <text x="1280" y="269" class="t">Rasa commands (Rasa-hosted)</text>
+  <text x="1280" y="247" class="t">Rasa-hosted, or your OpenAI key:</text>
+  <text x="1280" y="269" class="t">commands + RAG event answers</text>
 
   <rect x="1260" y="325" width="300" height="245" rx="18" class="ext"/>
   <text x="1280" y="358" class="h">🌍 Public event feeds</text>
@@ -114,9 +114,9 @@
   <text x="1280" y="436" class="t">• Dave in Salem (WordPress RSS)</text>
   <text x="1280" y="460" class="t">• Willamette Heritage Center</text>
   <text x="1280" y="484" class="t">• Willamette Bearcats (NWC iCal)</text>
-  <text x="1280" y="512" class="s">Center 50+, Deepwood, Lord &amp; Schryver,</text>
-  <text x="1280" y="532" class="s">Travel Salem, Elsinore, Salem Art,</text>
-  <text x="1280" y="552" class="s">Salem Reporter: sample listings</text>
+  <text x="1280" y="512" class="s">+ 22 more Salem-area calendars</text>
+  <text x="1280" y="532" class="s">linked under “More calendars”</text>
+  <text x="1280" y="552" class="s">(no feed to import)</text>
 
   <rect x="1260" y="605" width="300" height="160" rx="18" class="opt"/>
   <text x="1280" y="638" class="h">✉️ Real email / 💬 texts</text>
