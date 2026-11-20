@@ -139,13 +139,16 @@ After testing the first redesign, our team and the Dave in Salem blogger asked f
 
 ## Screenshots to add to the site
 
-1. The welcome page with the English / Español picker
-2. The Events tab on a laptop: category bar, compact card grid, page numbers
-3. The same page on a phone, with the bottom tab bar
-4. An event card with *More details* open (repeat dates, organization badge)
-5. My Events with the reminder panel (2 hours to 2 weeks, email / text)
-6. The chat in full screen, with the AI notice
-7. The Terms & privacy page
-8. Settings with a profile picture, larger text and high contrast
-9. The chat in Spanish, including "volver atrás"
-10. "Where these events come from" and "More Salem-area calendars"
+Ready-made screenshots are in `docs/screenshots/`:
+
+1. `01-welcome.png`: the welcome page with the English / Español picker
+2. `02-survey-interests.png`: the survey, with interests grouped in four columns
+3. `03-events-laptop.png`: the Events tab on a laptop (category bar, card grid, page numbers)
+4. `04-card-more-details.png`: an event card with *More details* open
+5. `05-sources-and-calendars.png`: "Where these events come from" and the linked calendars
+6. `06-my-events-reminders.png`: My Events with the reminder panel (2 hours to 2 weeks)
+7. `07-chat-full-screen.png`: the chat in full screen, with the AI notice
+8. `08-terms-privacy.png`: the Terms & privacy page
+9. `09-settings-large-text-contrast.png`: Settings with larger text and high contrast
+10. `10-chat-spanish-go-back.png`: the chat in Spanish, going back with "volver atrás"
+11. `11-events-phone-es.png`: the Events tab on a phone (in Spanish), with the bottom tab bar
