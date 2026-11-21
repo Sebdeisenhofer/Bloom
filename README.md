@@ -1,5 +1,9 @@
 # Bloom
 
+### 🌸 Try it live: **<https://206-189-212-135.sslip.io>**
+
+No install needed. Click **Continue as a guest**, or log in with the demo account **`demo@bloom.local`** / **`demo`** (or open <https://206-189-212-135.sslip.io/?demo> to sign in automatically).
+
 Bloom helps adults 60+ in Salem, Oregon find local events, interest groups and volunteer opportunities, and share their own. It pairs an accessible website with **Ask Bloom**, a Rasa Pro CALM assistant that holds multi-turn conversations in English and Spanish.
 
 Bloom **ranks events but never hides them**. A short survey (interests, part of town, days, time of day, accessibility needs) decides the order, and every card says why it was suggested. People stay in control.
